@@ -6,7 +6,7 @@
  * page shows the result in seconds instead of on the next cron tick.
  */
 import { useCallback, useState } from "react";
-import { useMutation } from "convex/react";
+import { useMutation } from "@/lib/convex-react";
 
 import { api } from "@/convex/_generated/api";
 import type { CallsReceipt } from "@/lib/arc/session";

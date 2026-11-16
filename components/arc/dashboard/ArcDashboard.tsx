@@ -9,7 +9,7 @@
  */
 import WalletFunding from "@/components/wallet/WalletFunding";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useQuery } from "convex/react";
+import { useQuery } from "@/lib/convex-react";
 import { useLocale } from "next-intl";
 import { parseAbi, type Address } from "viem";
 

@@ -11,7 +11,7 @@ import { Link } from "@/i18n/navigation";
 import { SURFACE } from "@/components/arena/surface";
 import Skeleton from "@/components/ui/Skeleton";
 import { Strip, StripCell } from "@/components/ui/Strip";
-import { useQuery } from "convex/react";
+import { useQuery } from "@/lib/convex-react";
 import { api } from "@/convex/_generated/api";
 import { formatUsdcUnitsBare as usdc } from "@/lib/money";
 import { isPendingVerdict } from "@/lib/claim-status";

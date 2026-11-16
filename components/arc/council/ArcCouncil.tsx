@@ -8,7 +8,7 @@
  */
 import { useEffect, useMemo, useState } from "react";
 import { marketPath } from "@/lib/chains/links";
-import { useQuery } from "convex/react";
+import { useQuery } from "@/lib/convex-react";
 import { useTranslations } from "next-intl";
 import type { Address } from "viem";
 

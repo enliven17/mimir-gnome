@@ -6,10 +6,15 @@ import { ConvexHttpClient } from "convex/browser";
 
 import { api } from "@/convex/_generated/api";
 import type { MarketChainId } from "@/lib/chains/registry";
+import { chainMarketDetail, chainMarketList } from "./chain-markets";
 
 let client: ConvexHttpClient | null | undefined;
 
+/** NEXT_PUBLIC_CONVEX_OFF=1: Convex is down (quota): markets come from the chain, the rest reads as empty. */
+const OFF = process.env.NEXT_PUBLIC_CONVEX_OFF === "1";
+
 function convex(): ConvexHttpClient | null {
+  if (OFF) return null;
   if (client === undefined) {
     const url = process.env.NEXT_PUBLIC_CONVEX_URL?.trim();
     client = url ? new ConvexHttpClient(url) : null;
@@ -20,6 +25,7 @@ function convex(): ConvexHttpClient | null {
 /** Every position an Arc account holds, each with its market. */
 export async function arcPositions(arcAccount: string) {
   const c = convex();
+  if (OFF) return [];
   if (!c) throw new Error("NEXT_PUBLIC_CONVEX_URL is not set");
   return c.query(api.arc.positionsOf, { user: arcAccount });
 }
@@ -27,6 +33,7 @@ export async function arcPositions(arcAccount: string) {
 /** VS markets the given Arc addresses challenged, in the given statuses, each with its positions. */
 export async function arcChallengedBy(wallets: string[], statuses: string[], limit: number) {
   const c = convex();
+  if (OFF) return [];
   if (!c) throw new Error("NEXT_PUBLIC_CONVEX_URL is not set");
   return c.query(api.arcViews.challengedBy, { wallets: wallets.map((w) => w.toLowerCase()), statuses, limit });
 }
@@ -48,13 +55,14 @@ export async function arcVolumeByUser(): Promise<Array<{ user: string; usdc: num
 /** Public markets, newest first, on one chain or all. */
 export async function arcMarketList(kind?: "vs" | "pool", chain?: MarketChainId) {
   const c = convex();
-  if (!c) throw new Error("NEXT_PUBLIC_CONVEX_URL is not set");
-  return c.query(api.arc.markets, { kind, chain, limit: 500 });
+  if (!c) return chainMarketList(kind, chain);
+  // Convex failing (quota, outage): the chain still has every market.
+  return c.query(api.arc.markets, { kind, chain, limit: 500 }).catch(() => chainMarketList(kind, chain));
 }
 
 /** One market with its positions, events, verdict and linked markets; chain defaults to Arc (older links). */
 export async function arcMarketDetail(kind: "vs" | "pool", marketId: number, chain: MarketChainId = "arc") {
   const c = convex();
-  if (!c) throw new Error("NEXT_PUBLIC_CONVEX_URL is not set");
-  return c.query(api.arc.market, { chain, kind, marketId });
+  if (!c) return chainMarketDetail(kind, marketId, chain);
+  return c.query(api.arc.market, { chain, kind, marketId }).catch(() => chainMarketDetail(kind, marketId, chain));
 }

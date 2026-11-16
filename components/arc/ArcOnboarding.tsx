@@ -6,7 +6,7 @@
  * staked (a spent balance is not a step undone), and once all three are done the card is gone for good.
  */
 import { useEffect, useState } from "react";
-import { useQuery } from "convex/react";
+import { useQuery } from "@/lib/convex-react";
 
 import { api } from "@/convex/_generated/api";
 import { Link } from "@/i18n/navigation";

@@ -3,7 +3,7 @@
 import { createContext, useContext, useEffect, useMemo, useRef, type ReactNode } from "react";
 import { requestRefresh } from "@/lib/motion";
 import type { LandingFeed } from "@/lib/landing";
-import { useQuery } from "convex/react";
+import { useQuery } from "@/lib/convex-react";
 import { api } from "@/convex/_generated/api";
 import { arcArenaEnabled } from "@/components/arc/arena/enabled";
 import { arcLandingFeed } from "@/lib/arc/landing";

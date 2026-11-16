@@ -9,7 +9,7 @@
  * "Stake on Base / Stake on Arc", each leg's pool side by side.
  */
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useQuery } from "convex/react";
+import { useQuery } from "@/lib/convex-react";
 
 import { api } from "@/convex/_generated/api";
 import Countdown from "@/components/arena/Countdown";

@@ -5,7 +5,7 @@
  * money, settled with one verdict. The market page shows every leg's figures side by side (never merged: the pools
  * settle separately) and lets the user pick the chain to stake on; the stake box then works on that leg.
  */
-import { useQuery } from "convex/react";
+import { useQuery } from "@/lib/convex-react";
 
 import { api } from "@/convex/_generated/api";
 import { Link } from "@/i18n/navigation";

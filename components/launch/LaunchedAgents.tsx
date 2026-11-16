@@ -1,7 +1,7 @@
 "use client";
 
 /** The hosted agents people launched (convex/launch.ts `list`), live from the backend. */
-import { useQuery } from "convex/react";
+import { useQuery } from "@/lib/convex-react";
 import { useTranslations } from "next-intl";
 
 import { api } from "@/convex/_generated/api";

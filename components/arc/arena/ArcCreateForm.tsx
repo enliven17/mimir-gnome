@@ -9,7 +9,7 @@
  * ETH. Then the market page.
  */
 import WalletFunding from "@/components/wallet/WalletFunding";
-import { useQuery } from "convex/react";
+import { useQuery } from "@/lib/convex-react";
 import { useEffect, useMemo, useState } from "react";
 import { parseEventLogs } from "viem";
 

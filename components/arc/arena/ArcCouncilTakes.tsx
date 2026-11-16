@@ -12,7 +12,7 @@
  * its position inside the track.
  */
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { useQuery } from "convex/react";
+import { useQuery } from "@/lib/convex-react";
 
 import { getPersonaBySlug } from "@/agents/council/personas";
 import { api } from "@/convex/_generated/api";

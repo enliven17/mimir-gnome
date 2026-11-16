@@ -34,6 +34,7 @@ export const V3_ABI = parseAbi([
   "function getClaim(uint256) view returns (address creator, string question, string creatorPosition, string counterPosition, string resolutionUrl, uint256 creatorStake, uint256 totalChallengerStake, uint256 reservedCreatorLiability, uint256 deadline, uint8 state, uint8 winnerSide, string resolutionSummary, uint8 confidence, string category, uint256 parentId, uint256 challengerCount, uint256 createdAt, bytes32 evidenceHash)",
   "function getClaimMarketConfig(uint256) view returns (string marketType, string oddsMode, uint256 challengerPayoutBps, string handicapLine, string settlementRule, uint256 maxChallengers, bool isPrivate, uint256 reservedCreatorLiability)",
   "function getChallengerList(uint256) view returns (address[] addrs, uint256[] stakes)",
+  "function claimCount() view returns (uint256)",
   "function disputeWindow() view returns (uint256)",
   "function proposals(uint256) view returns (uint8 winnerSide, uint8 confidence, uint64 proposedAt, uint64 disputedAt, address disputer, uint256 bond, bytes32 evidenceHash, string summary)",
 ]);
@@ -56,6 +57,7 @@ export const POOL_ABI = parseAbi([
   "function getMarket(uint256) view returns (address creator, uint256 deadline, uint256 createdAt, uint8 state, uint8 outcome, uint256 totalA, uint256 totalB)",
   "function getMarketText(uint256) view returns (string question, string labelA, string labelB, string resolutionUrl, string category, string summary)",
   "function stakeOf(uint256, address) view returns (uint256 onA, uint256 onB)",
+  "function marketCount() view returns (uint256)",
   "function disputeWindow() view returns (uint256)",
   "function getProposal(uint256) view returns (uint8 proposed, uint256 proposedAt, uint256 disputedAt, address disputer, uint256 bond, bytes32 evidenceHash)",
 ]);

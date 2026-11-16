@@ -1,5 +1,5 @@
 "use client";
-import { useQuery } from "convex/react";
+import { useQuery } from "@/lib/convex-react";
 import { marketPath } from "@/lib/chains/links";
 import { api } from "@/convex/_generated/api";
 import { Link } from "@/i18n/navigation";

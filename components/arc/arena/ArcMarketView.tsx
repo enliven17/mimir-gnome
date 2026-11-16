@@ -8,7 +8,7 @@
  * and a "Stake on Base / Stake on Arc" switch in the stake box.
  */
 import { useEffect, useRef, useState } from "react";
-import { useQuery } from "convex/react";
+import { useQuery } from "@/lib/convex-react";
 
 import { api } from "@/convex/_generated/api";
 import { SURFACE } from "@/components/arena/surface";
