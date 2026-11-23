@@ -81,7 +81,7 @@ function Card({ title, children }: { title: string; children: React.ReactNode })
 function Address({ chain, label, address }: { chain: MarketChain; label: string; address: string | null }) {
   if (!address) return <span className="text-muted">not deployed on this network yet</span>;
   return (
-    <a className={`${LINK} break-all font-mono text-[13px]`} href={explorerUrl(chain, "address", address)} target="_blank" rel="noreferrer" aria-label={`${label} on ${chain.explorerName}`}>
+    <a className={`${LINK} break-all font-mono text-[13px]`} href={explorerUrl(chain, "realm", address)} target="_blank" rel="noreferrer" aria-label={`${label} on ${chain.explorerName}`}>
       {address}
     </a>
   );
@@ -192,7 +192,7 @@ export default function DocsPage() {
             </div>
             <Facts
               rows={[
-                ["Minimum stake", `${(Number(primary.contracts.minStakeWei) / 1e18).toLocaleString("en-US", { maximumFractionDigits: 6 })} USDC`],
+                ["Minimum stake", `${(Number(primary.minStakeWei) / 1e18).toLocaleString("en-US", { maximumFractionDigits: 6 })} mUSD`],
                 ["Betting closes", "60 seconds before the deadline"],
                 ["Before you sign", "Every stake shows what you risk, the fee, and what you win: “at most” for VS (later challengers only lower it), “if it closed now” for pools."],
                 ["Payouts", "Pushed to your wallet on the market's network at settlement; nothing to claim."],
@@ -363,12 +363,13 @@ curl -X POST https://mimirmarkets.xyz/api/launch/<agent>/call \\
               linked to its network&apos;s explorer (BaseScan, ArcScan), plus the oracle&apos;s audit bundle. The contracts:
             </p>
             <Facts
-              rows={(["base", "arc"] as const).flatMap((id) => {
+              rows={MARKET_CHAINS.enabled.flatMap((id) => {
                 const c = MARKET_CHAINS.chains[id];
                 return [
-                  [`${c.name}: MimirV3 (VS)`, <Address key={`${id}-v3`} chain={c} label="MimirV3" address={c.contracts.mimirV3} />],
-                  [`${c.name}: MimirPool`, <Address key={`${id}-pool`} chain={c} label="MimirPool" address={c.contracts.mimirPool} />],
-                  [`${c.name}: MimirFees`, <Address key={`${id}-fees`} chain={c} label="MimirFees" address={c.contracts.mimirFees} />],
+                  ["VS realm", <Address key={`${id}-vs`} chain={c} label="r/vs" address={c.realms.vs} />],
+                  ["Pool realm", <Address key={`${id}-pool`} chain={c} label="r/pool" address={c.realms.pool} />],
+                  ["Fees realm", <Address key={`${id}-fees`} chain={c} label="r/fees" address={c.realms.fees} />],
+                  ["mUSD (GRC20)", <Address key={`${id}-musd`} chain={c} label="r/musd" address={c.realms.musd} />],
                 ] as [string, React.ReactNode][];
               })}
             />

@@ -15,7 +15,6 @@ import { SURFACE_DEEP } from "@/components/arena/surface";
 import Segmented from "@/components/ui/Segmented";
 import { Link } from "@/i18n/navigation";
 import { formatUsdcUnitsBare } from "@/lib/money";
-import { arcExplorerUrl } from "@/lib/arc/config";
 import { ExternalMark } from "@/components/ExternalMark";
 import AgentFace from "@/components/launch/AgentFace";
 import { basescan, tokenPage, type AgentToken } from "@/lib/launch/council-view";
@@ -29,21 +28,19 @@ export interface RosterPersona {
   bio: string;
   archetype: string;
   track: Track;
-  /** The Arc wallet it stakes from (Circle developer-controlled). */
-  arcAddress?: string;
-  /** Its Base wallet, once made (not staking yet). */
-  baseAddress?: string;
+  /** The gno.land account it stakes from. */
+  address?: string;
   /** Its agent page ticker, and its token if it has one (lib/launch/council.json). */
   ticker?: string;
   token?: Pick<AgentToken, "chain" | "address"> | null;
   categoryFilter?: string[];
-  /** USDC base units, as strings (the page is server-rendered). */
+  /** mUSD base units (6 dp), as strings (the page is server-rendered). */
   bankroll: string;
   atRisk: string;
   stakes: number;
   won: number;
   lost: number;
-  /** `href` / `label` for Arc markets. */
+  /** `href` / `label` for its markets. */
   recentBets: { claimId: number; stake: string; href?: string; label?: string }[];
 }
 
@@ -202,11 +199,11 @@ function PersonaCard({
         <div className="grid gap-3">
           <dl className="kv">
             <dt>{t("bankroll")}</dt>
-            <dd>{formatUsdcUnitsBare(p.bankroll)} USDC</dd>
+            <dd>{formatUsdcUnitsBare(p.bankroll)} mUSD</dd>
             <dt>{t("stakes")}</dt>
             <dd>{p.stakes}</dd>
             <dt>{t("atRisk")}</dt>
-            <dd>{formatUsdcUnitsBare(p.atRisk)} USDC</dd>
+            <dd>{formatUsdcUnitsBare(p.atRisk)} mUSD</dd>
           </dl>
           {p.categoryFilter?.length ? (
             <p className="m-0 text-[12px] text-muted">
@@ -220,26 +217,19 @@ function PersonaCard({
                   <Link href={b.href ?? `/arena`} className="min-w-0 truncate text-coral hover:underline">
                     {b.label ?? t("claim", { id: b.claimId })}
                   </Link>
-                  <span className="font-mono tabular-nums text-cream">{formatUsdcUnitsBare(b.stake)} USDC</span>
+                  <span className="font-mono tabular-nums text-cream">{formatUsdcUnitsBare(b.stake)} mUSD</span>
                 </li>
               ))}
             </ul>
           ) : (
             <p className="m-0 text-[13px] text-muted">
-              {p.bankroll === "0" && p.arcAddress ? t("unfunded") : t("noBets")}
+              {p.bankroll === "0" && p.address ? t("unfunded") : t("noBets")}
             </p>
           )}
           <div className="grid gap-1">
-            {p.arcAddress ? (
-              <a href={arcExplorerUrl("address", p.arcAddress)} target="_blank" rel="noreferrer" className="font-mono text-[12px] text-muted hover:text-coral">
-                <span className="mr-2 text-dim">Arc</span>
-                {short(p.arcAddress)} <ExternalMark />
-              </a>
-            ) : null}
-            {p.baseAddress ? (
-              <a href={explorerUrl(MARKET_CHAINS.chains.base, "address", p.baseAddress)} target="_blank" rel="noreferrer" className="font-mono text-[12px] text-muted hover:text-coral">
-                <span className="mr-2 text-dim">Base</span>
-                {short(p.baseAddress)} <ExternalMark />
+            {p.address ? (
+              <a href={explorerUrl(MARKET_CHAINS.chains.gno, "address", p.address)} target="_blank" rel="noreferrer" className="font-mono text-[12px] text-muted hover:text-coral">
+                {short(p.address)} <ExternalMark />
               </a>
             ) : null}
             {p.token && p.ticker ? (

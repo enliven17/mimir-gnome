@@ -33,9 +33,9 @@
 
 import Anthropic from "@anthropic-ai/sdk";
 import { createHash } from "node:crypto";
-import { ARC } from "./arc/config";
+import { GNO } from "./gno/config";
 
-const IS_MAINNET = ARC.network === "mainnet";
+const IS_MAINNET = GNO.chainId === "gnoland-1";
 
 export type LLMProvider = "gemini" | "anthropic" | "groq" | "openrouter";
 

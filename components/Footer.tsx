@@ -15,7 +15,7 @@ import { useEffect, useRef, useState } from "react";
 import { useTranslations } from "next-intl";
 import { ArrowRight } from "@/components/icons";
 import { Link, usePathname } from "@/i18n/navigation";
-import { chainPublicClient } from "@/lib/chains/client";
+import { latestBlockHeight } from "@/lib/chains/client";
 import { MARKET_CHAINS, explorerUrl } from "@/lib/chains/registry";
 import { gsap, useGSAP } from "@/lib/motion";
 import dynamic from "next/dynamic";
@@ -31,15 +31,15 @@ const SplitReveal = dynamic(() => import("@/components/motion/SplitReveal"));
 
 const REPO_URL = "https://github.com/enliven17/mimir-markets";
 const OPENAPI_URL = `${REPO_URL}/blob/main/docs/openapi-agent-v1.yaml`;
-const CCTP_URL = "https://developers.circle.com/cctp";
-// The VS market contract stands for "the program": every contract is listed on /docs.
+// The VS market realm stands for "the program": every realm is listed on /docs.
 const primaryChain = MARKET_CHAINS.chains[MARKET_CHAINS.defaultChain];
-const PROGRAM_ID = primaryChain.contracts.mimirV3 ?? "";
-const PROGRAM_SHORT = PROGRAM_ID ? `${PROGRAM_ID.slice(0, 6)}…${PROGRAM_ID.slice(-4)}` : "-";
-const PROGRAM_EXPLORER_URL = PROGRAM_ID ? explorerUrl(primaryChain, "address", PROGRAM_ID) : primaryChain.explorer;
+const PROGRAM_ID = primaryChain.realms.vs;
+const PROGRAM_SHORT = `r/${PROGRAM_ID.split("/").pop()}`;
+const PROGRAM_EXPLORER_URL = explorerUrl(primaryChain, "realm", PROGRAM_ID);
+// Where test mUSD comes from: the mUSD realm's page (its Faucet).
+const FUNDING_URL = explorerUrl(primaryChain, "realm", primaryChain.realms.musd);
 const MARK = "Mimir";
 const SLOT_POLL_MS = 8_000;
-const ARC_CLIENT = chainPublicClient(primaryChain);
 
 const groupItems = (key: string) => NAV_MORE_GROUPS.find((g) => g.key === key)?.items ?? [];
 
@@ -51,7 +51,7 @@ const BUILD: readonly NavItem[] = [...groupItems("build"), ...mimirItem("terms")
 
 const formatSlot = (n: number) => Math.round(n).toLocaleString("en-US");
 
-/** Latest Arc block, polled only while the footer is on screen. */
+/** Latest gno.land block, polled only while the footer is on screen. */
 function useLiveSlot(target: React.RefObject<HTMLElement | null>): number | null {
   const [slot, setSlot] = useState<number | null>(null);
   const [visible, setVisible] = useState(false);
@@ -70,9 +70,8 @@ function useLiveSlot(target: React.RefObject<HTMLElement | null>): number | null
     const read = () =>
       // A background tab needs no live slot.
       !document.hidden &&
-      ARC_CLIENT
-        .getBlockNumber()
-        .then((b) => !cancelled && setSlot(Number(b)))
+      latestBlockHeight()
+        .then((b) => !cancelled && setSlot(b))
         .catch(() => undefined);
     void read();
     const timer = setInterval(read, SLOT_POLL_MS);
@@ -204,7 +203,7 @@ export default function Footer() {
               <div className="flex items-center justify-between gap-3">
                 <dt className="text-muted">{t("rollup")}</dt>
                 <dd>
-                  <a href={CCTP_URL} target="_blank" rel="noreferrer" className="footer-link">
+                  <a href={FUNDING_URL} target="_blank" rel="noreferrer" className="footer-link">
                     {t("rollupValue")}
                     <ExternalMark className="ml-1 text-dim" />
                   </a>

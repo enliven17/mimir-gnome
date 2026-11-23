@@ -25,3 +25,18 @@ export const nextDripAt = (address: string, cfg: GnoConfig = GNO): Promise<numbe
 
 /** GNOT as a display number. */
 export const ugnotToGnot = (ugnot: bigint): number => Number(ugnot) / 1e6;
+
+/** The chain's latest block height (Tendermint `status`). */
+export async function latestBlockHeight(cfg: GnoConfig = GNO): Promise<number> {
+  const res = await fetch(cfg.rpcUrl, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "status", params: {} }),
+    cache: "no-store",
+  });
+  if (!res.ok) throw new Error(`gno RPC ${res.status}`);
+  const body = (await res.json()) as { result?: { sync_info?: { latest_block_height?: string } } };
+  const h = Number(body.result?.sync_info?.latest_block_height);
+  if (!Number.isFinite(h)) throw new Error("no block height");
+  return h;
+}

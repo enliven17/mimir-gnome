@@ -1,16 +1,14 @@
 "use client";
 
 /**
- * /council on Arc: the totals strip, the oracle, then both juries. Each
- * persona stakes from its own Circle wallet on Arc (a Base wallet joins it
- * once Base markets open). Records and stakes come live from the Convex
- * index (convex/arcViews.ts), bankrolls straight from the Arc RPC.
+ * /council: the totals strip, the oracle, then both juries. Each persona
+ * stakes mUSD from its own gno.land account. Records and stakes come live from
+ * the Convex index (convex/arcViews.ts), bankrolls straight from the mUSD realm.
  */
 import { useEffect, useMemo, useState } from "react";
 import { marketPath } from "@/lib/chains/links";
 import { useQuery } from "@/lib/convex-react";
 import { useTranslations } from "next-intl";
-import type { Address } from "viem";
 
 import { COUNCIL_PERSONAS, trackOf } from "@/agents/council/personas";
 import { api } from "@/convex/_generated/api";
@@ -20,7 +18,7 @@ import PeepAvatar from "@/components/ui/PeepAvatar";
 import Skeleton from "@/components/ui/Skeleton";
 import { StatusPill } from "@/components/ui/StatusPill";
 import { Strip, StripCell } from "@/components/ui/Strip";
-import { usdcBalanceWei } from "@/lib/chains/client";
+import { musdBalanceWei } from "@/lib/chains/client";
 import { MARKET_CHAINS, explorerUrl } from "@/lib/chains/registry";
 import { formatUsdcUnitsBare } from "@/lib/money";
 import { ExternalMark } from "@/components/ExternalMark";
@@ -35,7 +33,7 @@ export default function ArcCouncil() {
   const t = useTranslations("council");
   const council = useQuery(api.arcViews.council, {});
   const oracle = useQuery(api.arcViews.oracle, {});
-  const bankrolls = useBankrolls(council?.map((c) => c.address as Address));
+  const bankrolls = useBankrolls(council?.map((c) => c.address));
 
   const personas: RosterPersona[] = useMemo(() => {
     const byslug = new Map((council ?? []).map((c) => [c.slug, c]));
@@ -49,9 +47,9 @@ export default function ArcCouncil() {
         archetype: p.archetype,
         track: trackOf(p),
         ticker: agent?.ticker,
-        token: agent?.token ?? null,
-        arcAddress: MARKET_CHAINS.chains.arc.enabled ? agent?.arc ?? undefined : undefined,
-        baseAddress: c?.base ?? agent?.base?.address,
+        // Agent tokens lived on Base and Arc: none on gno.land.
+        token: null,
+        address: c?.address ?? undefined,
         categoryFilter: p.categoryFilter,
         bankroll: c ? units(bankrolls.get(c.address) ?? 0n) : "0",
         atRisk: c ? units(c.atRisk) : "0",
@@ -108,19 +106,19 @@ export default function ArcCouncil() {
 
       <CouncilRoster personas={personas} />
 
-      <p className="m-0 text-center text-[12px] text-dim">Live from the market index; each persona stakes from its own Circle wallet on {primaryChain.name}.</p>
+      <p className="m-0 text-center text-[12px] text-dim">Live from the market index; each persona stakes mUSD from its own account on {primaryChain.name}.</p>
     </>
   );
 }
 
-/** Native USDC (wei) of each address, read once per set of addresses. */
-function useBankrolls(addresses: Address[] | undefined) {
+/** mUSD (index units) of each address, read once per set of addresses. */
+function useBankrolls(addresses: string[] | undefined) {
   const [map, setMap] = useState<Map<string, bigint>>(new Map());
   const key = addresses?.join(",") ?? "";
   useEffect(() => {
     if (!key) return;
     let cancelled = false;
-    void Promise.all(key.split(",").map(async (a) => [a, await usdcBalanceWei(primaryChain, a as Address).catch(() => 0n)] as const)).then(
+    void Promise.all(key.split(",").map(async (a) => [a, await musdBalanceWei(a, primaryChain.gno).catch(() => 0n)] as const)).then(
       (rows) => !cancelled && setMap(new Map(rows)),
     );
     return () => {
