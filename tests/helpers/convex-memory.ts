@@ -1,5 +1,14 @@
 import assert from "node:assert/strict";
+import { marketDeployment } from "../../lib/chains/deployment";
+import { serverMarketChains } from "../../lib/chains/registry";
 /** Executes real Convex handlers against indexed rows; failed mutations roll back all writes. */
+/** A backend whose market deployment is bound to the configured gno chain, as `convex run marketDeployment:bind` leaves it. */
+export async function boundBackend() {
+  const backend = memoryBackend();
+  await backend.db.insert("marketDeployments", { ...marketDeployment(serverMarketChains().chains.gno), boundAt: 0 });
+  return backend;
+}
+
 export function memoryBackend() {
   let rows = new Map<string, any>(), sequence = 0;
   const db = {

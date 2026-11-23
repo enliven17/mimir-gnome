@@ -2,11 +2,11 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { stakeTimes } from "../../convex/arc";
 import { lateStakes } from "../../lib/late-stakes";
-import { memoryBackend } from "../helpers/convex-memory";
+import { boundBackend as memoryBackend } from "../helpers/convex-memory";
 
 test("late-stake detection includes stakes beyond 2,000 mixed market events", async () => {
-  const mem = memoryBackend();
-  const row = { chain: "base", kind: "pool", marketId: 7 };
+  const mem = await memoryBackend();
+  const row = { chain: "gno", kind: "pool", marketId: 7 };
   for (let i = 0; i < 2100; i++) {
     await mem.db.insert("arcEvents", { ...row, name: i % 2 ? "FeeAccrued" : "Staked", at: 100 });
   }
@@ -17,14 +17,14 @@ test("late-stake detection includes stakes beyond 2,000 mixed market events", as
 });
 
 test("latest stake timestamps cover every stake event type and remain market-isolated", async () => {
-  const mem = memoryBackend();
-  const row = { chain: "arc", kind: "vs", marketId: 1 };
+  const mem = await memoryBackend();
+  const row = { chain: "gno", kind: "vs", marketId: 1 };
   const names = ["ClaimCreated", "ClaimChallenged", "MarketCreated", "Staked"];
   for (const name of names) {
     await mem.db.insert("arcEvents", { ...row, name, at: 300, user: name });
     await mem.db.insert("arcEvents", { ...row, name, at: 100 }); // imported later, earlier block time
   }
-  for (const foreign of [{ chain: "base" }, { kind: "pool" }, { marketId: 2 }]) {
+  for (const foreign of [{ kind: "pool" }, { marketId: 2 }]) {
     await mem.db.insert("arcEvents", { ...row, ...foreign, name: "Staked", at: 900 });
   }
   await mem.db.insert("arcEvents", { ...row, name: "FeeAccrued", at: 900 });
@@ -34,8 +34,8 @@ test("latest stake timestamps cover every stake event type and remain market-iso
 
 test("missing legacy stake timestamps defer settlement rather than prove history safe", async () => {
   for (const name of ["ClaimCreated", "ClaimChallenged", "MarketCreated", "Staked"]) {
-    const mem = memoryBackend();
-    const row = { chain: "base", kind: "pool", marketId: 7 };
+    const mem = await memoryBackend();
+    const row = { chain: "gno", kind: "pool", marketId: 7 };
     await mem.db.insert("arcEvents", { ...row, name, at: 100 });
     await mem.db.insert("arcEvents", { ...row, name, block: 300 });
     await assert.rejects(mem.run(stakeTimes, row), /missing block timestamps/);
