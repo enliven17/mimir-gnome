@@ -17,7 +17,7 @@ export interface LandingChallenger {
 /** The subset of the API claim the landing reads. */
 export interface LandingClaim {
   id: number;
-  /** Where the claim lives; defaults to /arena/<id> (Arc markets set /arena/arc/<kind>/<id>). */
+  /** Where the claim lives; defaults to /arena/<id> (indexed markets set /arena/gno/<kind>/<id>). */
   href?: string;
   /** How to show the id; defaults to #<id>. */
   label?: string;
@@ -49,13 +49,13 @@ export interface LandingFeed {
 export interface LiveStats {
   markets: number;
   resolved: number;
-  /** USDC (not base units). */
+  /** mUSD (not base units). */
   openPool: number;
   /** Live claims (open / active) whose market runs inside the Ephemeral Rollup. */
   liveOnEr: number;
 }
 
-/** Creator stake plus every challenger stake, in USDC. */
+/** Creator stake plus every challenger stake, in mUSD. */
 export function poolUsdc(c: Pick<LandingClaim, "creatorStake" | "totalChallengerStake">): number {
   return unitsToUsdc(c.creatorStake) + unitsToUsdc(c.totalChallengerStake);
 }
@@ -66,7 +66,7 @@ export function liveStats(feed: LandingFeed | null): LiveStats {
     markets: feed.claimCount,
     resolved: feed.totalResolved,
     openPool: unitsToUsdc(feed.openPool),
-    // Arc has no rollup: its strip shows open markets in this slot ("Open now").
+    // gno.land has no rollup: its strip shows open markets in this slot ("Open now").
     liveOnEr: feed.claims.filter((c) => isLiveState(c.state) && (c.delegated || c.href !== undefined)).length,
   };
 }

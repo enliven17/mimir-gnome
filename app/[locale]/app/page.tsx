@@ -29,7 +29,7 @@ export default function AppPage() {
           <h1 className="m-0 font-display text-app-h1 text-cream">Mimir in your pocket.</h1>
           <p className="m-0 max-w-[560px] text-[15px] leading-relaxed text-muted">
             The full app on Android: open markets, stake, follow your positions and get paid, from your own
-            EVM wallet. It is the same Mimir as this site, so every update reaches the app the moment it ships.
+            Adena wallet. It is the same Mimir as this site, so every update reaches the app the moment it ships.
           </p>
         </header>
 
@@ -59,7 +59,7 @@ export default function AppPage() {
                 </li>
                 <li className={STEP}>
                   <span className={NUM}>3</span>
-                  <span>Open Mimir from your home screen, connect your EVM wallet on Arc or Base.</span>
+                  <span>Open Mimir from your home screen, connect your Adena wallet on gno.land.</span>
                 </li>
               </ol>
               <p className="m-0 break-all font-mono text-[11px] leading-relaxed text-dim">SHA-256 {APP_RELEASE.sha256}</p>

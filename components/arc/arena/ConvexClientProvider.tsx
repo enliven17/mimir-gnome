@@ -1,6 +1,6 @@
 "use client";
 
-/** Live Convex queries for the Arc arena (convex/arc.ts). One client per tab. */
+/** Live Convex queries for the arena (convex/arc.ts). One client per tab. */
 import { ConvexProvider, ConvexReactClient } from "convex/react";
 import type { ReactNode } from "react";
 

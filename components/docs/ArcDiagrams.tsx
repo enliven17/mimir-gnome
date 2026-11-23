@@ -37,19 +37,19 @@ export function Figure({ label, caption, children }: { label: string; caption: s
   );
 }
 
-/** (a) The system: the user's wallet, markets on Arc, the house agents and the index on the backend, the app on top. */
+/** (a) The system: the user's wallet, markets on gno.land, the house agents and the index on the backend, the app on top. */
 export function SystemDiagram() {
   return (
     <Figure
-      label="System overview. The user's EVM wallet holds USDC on Arc and stakes straight into the MimirV3 and MimirPool contracts, paying gas in USDC. Mimir's backend indexes the contracts and runs the oracle and the council, which write back to the contracts. The web app reads the index live and sends each transaction from the user's wallet."
-      caption="USDC stays in your wallet until you stake, every stake and payout happens on Arc, and Mimir's backend keeps the index, the oracle and the council running beside the contracts."
+      label="System overview. The user's Adena wallet holds mUSD on gno.land and stakes straight into the VS and pool realms, paying gas in GNOT. Mimir's backend indexes the realms and runs the oracle and the council, which write back to the realms. The web app reads the index live and sends each transaction from the user's wallet."
+      caption="mUSD stays in your wallet until you stake, every stake and payout happens on gno.land, and Mimir's backend keeps the index, the oracle and the council running beside the realms."
     >
       <div className="grid gap-0 md:grid-cols-[minmax(0,1fr)_88px_minmax(0,1fr)_64px_minmax(0,1.15fr)] md:items-center">
-        <Node tag="Arc · Base" title="Your wallet" sub="MetaMask, Rabby, Coinbase Wallet, any EVM wallet." />
+        <Node tag="gno.land" title="Your wallet" sub="Adena, the gno.land wallet." />
         <Link label="connect" />
-        <Node tag="Arc" title="Your USDC" sub="Stake and gas, both in USDC. No approvals." hot />
+        <Node tag="gno.land" title="Your mUSD" sub="Stake in mUSD, gas in GNOT. The exact approve rides in the same transaction." hot />
         <Link label="stake" delay={1.1} />
-        <Node tag="Arc · contracts" title="MimirV3 · MimirPool" sub="VS duels and two-sided pools. Native USDC escrow." hot />
+        <Node tag="gno.land · realms" title="r/vs · r/pool" sub="VS duels and two-sided pools. mUSD escrow." hot />
       </div>
       <div className="grid gap-0 md:grid-cols-[minmax(0,1fr)_88px_minmax(0,1fr)_64px_minmax(0,1.15fr)]">
         <div className="max-md:hidden" />
@@ -60,7 +60,7 @@ export function SystemDiagram() {
       </div>
       <div className="grid gap-0 md:grid-cols-[minmax(0,1fr)_88px_minmax(0,2.2fr)] md:items-center">
         <div className="max-md:order-3">
-          <Node tag="Web app" title="Arena, market pages" sub="Live queries, no polling. Every tx linked to ArcScan." />
+          <Node tag="Web app" title="Arena, market pages" sub="Live queries, no polling. Every tx linked to gnoweb." />
         </div>
         <Link back label="live index" delay={1.8} className="max-md:order-2" />
         <div className="df-node max-md:order-1">
@@ -68,7 +68,7 @@ export function SystemDiagram() {
           <span className="df-title">Indexer · Oracle · Council</span>
           <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-3">
             {[
-              ["Indexer", "every 30 s", "reads both contracts, keeps markets, positions and every tx"],
+              ["Indexer", "every 30 s", "reads both realms, keeps markets, positions and every tx"],
               ["Oracle", "every minute", "proposes, finalizes, refunds, pushes pool payouts"],
               ["Council", "every 5 min", "20 personas read every market; the best fit posts its take"],
             ].map(([t, when, what]) => (
@@ -88,12 +88,12 @@ export function SystemDiagram() {
 }
 
 const STEPS: Array<[string, string]> = [
-  ["Open", "Stakes come in. Each pays the entry fee; the rest is escrowed on Arc."],
+  ["Open", "Stakes come in. Each pays the entry fee; the rest is escrowed on gno.land."],
   ["Staking closes", "60 s before the deadline, so no one stakes on a known outcome."],
   ["Oracle proposes", "Evidence, deadline prices and the model's verdict. The audit bundle's hash goes on chain."],
-  ["Dispute window", "Any participant can dispute with a 2 USDC bond; the arbiter rules."],
+  ["Dispute window", "Any participant can dispute with a 2 mUSD bond; the arbiter rules."],
   ["Final", "Anyone can finalize once the window closes. Verdicts are refused after the grace period."],
-  ["Paid", "Winners are paid straight to their Arc accounts. Draw or unresolvable: everyone refunded."],
+  ["Paid", "Winners are paid to their gno.land accounts. Draw or unresolvable: everyone refunded."],
 ];
 
 /** (b) The market lifecycle as a stepper that lights up in order. */
@@ -123,11 +123,11 @@ export function LifecycleDiagram() {
 export function FeeDiagram() {
   return (
     <Figure
-      label="Fee flow for a 100 USDC stake. 0.50 USDC entry fee goes to the treasury and 99.50 USDC goes into the market. A winning payout has no fee, except copy trades, which give 1% of the profit to the basket creator and 1% to Mimir."
+      label="Fee flow for a 100 mUSD stake. 0.50 mUSD entry fee goes to the treasury and 99.50 mUSD goes into the market. A winning payout has no fee, except copy trades, which give 1% of the profit to the basket creator and 1% to Mimir."
       caption="Example: a $100 stake. The entry fee is the only fee on a normal stake and is kept on refunds; winnings are never charged, except the 1% + 1% of profit on copy trades."
     >
       <div className="grid gap-0 md:grid-cols-[minmax(0,0.8fr)_72px_minmax(0,1.6fr)_72px_minmax(0,1fr)] md:items-center">
-        <Node tag="You send" title="$100.00" sub="from your Arc account" />
+        <Node tag="You send" title="$100.00" sub="from your gno.land account" />
         <Link delay={0.3} />
         <Node tag="Entry fee" title="$0.50" sub="0.5% to the treasury. Kept on refunds." />
         <Link delay={1.2} />

@@ -4,7 +4,7 @@ import { pageMeta } from "@/lib/seo";
 export const metadata = pageMeta({
   path: "/agents/new",
   title: "Connect your agent · Mimir Markets",
-  description: "Register your own AI agent on Mimir: a signed API, unsigned Arc transactions back, and Mimir never holds your key.",
+  description: "Register your own AI agent on Mimir: a signed API, unsigned gno.land transactions back, and Mimir never holds your key.",
   index: false,
 });
 

@@ -10,7 +10,7 @@ import { pageMeta } from "@/lib/seo";
 export const metadata = pageMeta({
   path: "/terminal",
   title: "Mimir CLI · Prediction markets in your terminal",
-  description: "Mimir in your own terminal: live Arc markets, the council and your own agents, thinking with Claude, Gemini, OpenAI, Groq, OpenRouter or Ollama.",
+  description: "Mimir in your own terminal: live gno.land markets, the council and your own agents, thinking with Claude, Gemini, OpenAI, Groq, OpenRouter or Ollama.",
 });
 
 const NPM = "https://www.npmjs.com/package/mimir-terminal";
@@ -53,7 +53,7 @@ export default async function TerminalPage({ params }: { params: Promise<{ local
         <p className="m-0 font-mono text-[12px] uppercase tracking-[0.2em] text-coral">CLI</p>
         <h1 className="m-0 font-display text-app-h1 text-cream">Mimir in your own terminal.</h1>
         <p className="m-0 max-w-[620px] text-[15px] leading-relaxed text-muted">
-          Read the live markets that settle on Arc, ask the council about them, and run your own agents, all on your own AI
+          Read the live markets that settle on gno.land, ask the council about them, and run your own agents, all on your own AI
           and your own machine. Your keys stay in your environment; Mimir&apos;s AI is never called.
         </p>
       </header>
@@ -103,7 +103,7 @@ export default async function TerminalPage({ params }: { params: Promise<{ local
         <p className="m-0 text-[14px] leading-relaxed text-muted">
           Register an agent through the agent API, put its key in <code className="font-mono text-cream">MIMIR_API_KEY</code> and{" "}
           <code className="font-mono text-cream">mimir connect &lt;agent id&gt;</code>: while the CLI runs, your agent shows Live on the
-          site. To trade, the agent API returns unsigned Arc transactions your agent signs with its own key. The full guide is in{" "}
+          site. To trade, the agent API returns unsigned gno.land transactions your agent signs with its own key. The full guide is in{" "}
           <a href={AGENTS_DOC} target="_blank" rel="noreferrer" className={LINK}>docs/AGENTS.md</a>.
         </p>
       </Section>

@@ -29,7 +29,7 @@ export interface NavGroup {
 
 export const NAV_PRIMARY: readonly NavItem[] = [
   { href: "/arena", key: "arena", matchNested: true },
-  // Portfolio is the old Dashboard: label change only, the route stays. It also hosts the Arc account setup.
+  // Portfolio is the old Dashboard: label change only, the route stays. It also hosts the gno.land account setup.
   { href: "/dashboard", key: "portfolio" },
   // Agents and the council together (was /agents and /council).
   { href: "/launch", key: "launch", matchNested: true },

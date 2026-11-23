@@ -60,7 +60,7 @@ function Inspector({ claim, now }: { claim: LandingClaim; now: number }) {
       <dl className="kv">
         <dt>{t("pool")}</dt>
         <dd>
-          <RollingNumber value={poolUsdc(claim)} format={usdc} flash /> USDC
+          <RollingNumber value={poolUsdc(claim)} format={usdc} flash /> mUSD
         </dd>
         <dt>{t("seats")}</dt>
         <dd>

@@ -21,7 +21,7 @@ export interface AdenaAccount {
 
 /** Set while the site holds a connection, so a reload restores it without a prompt. */
 const CONNECTED_KEY = "mimir:adena-connected";
-/** Keys from the EVM wallet: only cleaned up. */
+/** Keys from the previous wallet integration: only cleaned up. */
 const LEGACY_KEYS = ["mimir:evm-connected", "mimir:evm-intent", "mimir:evm-wallet", "mimir.robinhood.via", "mimir:entry-mode"];
 
 const NO_ACCOUNT: AdenaAccount = { address: null, connecting: false, installed: false };

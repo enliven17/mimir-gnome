@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * An agent's own token. Agent tokens were launchpad tokens on EVM chains (Argus, Clanker); there is no launchpad for
+ * An agent's own token. Agent tokens were launchpad tokens on other chains (Argus, Clanker); there is no launchpad for
  * them on gno.land yet, so the owner sees a short note and everyone else sees nothing.
  */
 import { useMimirWallet } from "@/hooks/useMimirWallet";

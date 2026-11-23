@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * The admin panel: a read-only view of everything that runs Mimir. Sign in with an ADMIN_WALLETS EVM wallet by
+ * The admin panel: a read-only view of everything that runs Mimir. Sign in with an ADMIN_WALLETS gno.land wallet by
  * signing a single-use challenge (lib/server/admin.ts); the session lasts 10 minutes, then the panel asks again.
  * The server answers 404 to anyone else. Refreshes every 30 s.
  */
@@ -147,7 +147,7 @@ function Dashboard({ d, error, token }: { d: AdminOverview; error: string | null
       <header className="flex flex-wrap items-baseline justify-between gap-3">
         <h1 className="m-0 font-display text-app-h1 text-cream">Admin</h1>
         <p className="m-0 text-[12px] text-muted">
-          Arc {d.network} · updated {new Date(d.at).toLocaleTimeString("en-GB")} · every 30 s
+          gno.land {d.network} · updated {new Date(d.at).toLocaleTimeString("en-GB")} · every 30 s
           {error ? <span className="text-danger"> · last refresh failed: {error}</span> : null}
         </p>
       </header>
@@ -171,9 +171,9 @@ function Dashboard({ d, error, token }: { d: AdminOverview; error: string | null
           <Stat label="Markets" value={b.markets.total} />
           <Stat label="Live" value={b.markets.live.length} />
           <Stat label="New in 24 h" value={b.markets.createdLast24h} />
-          <Stat label="Volume (USDC)" value={b.markets.volumeUsd.toLocaleString("en-US", { maximumFractionDigits: 2 })} />
-          <Stat label="Fees (USDC)" value={usdc(b.markets.feesWei)} />
-          <Stat label="Arc accounts staking" value={b.people.arcAccounts} />
+          <Stat label="Volume (mUSD)" value={b.markets.volumeUsd.toLocaleString("en-US", { maximumFractionDigits: 2 })} />
+          <Stat label="Fees (mUSD)" value={usdc(b.markets.feesWei)} />
+          <Stat label="Accounts staking" value={b.people.arcAccounts} />
           <Stat label="People (not ours)" value={b.people.nonHouse} />
           <Stat label="Oracle verdicts" value={b.oracle.verdicts} />
         </section>
@@ -209,7 +209,7 @@ function Dashboard({ d, error, token }: { d: AdminOverview; error: string | null
           <Table
             head={["Market", "Question", "Attempts", "Next try", "Last error"]}
             rows={b.oracle.deferred.map((t) => [
-              <Link key="l" href={marketPath(t.chain, t.kind, t.marketId)} className="whitespace-nowrap text-coral hover:underline">{t.chain === "base" ? "Base " : ""}{t.kind.toUpperCase()} #{t.marketId}</Link>,
+              <Link key="l" href={marketPath(t.chain, t.kind, t.marketId)} className="whitespace-nowrap text-coral hover:underline">{t.kind.toUpperCase()} #{t.marketId}</Link>,
               <span key="q" className="line-clamp-2">{t.question}</span>,
               <span key="a" className={t.attempts >= 5 ? "text-pending" : ""}>{t.attempts}</span>,
               <span key="n" className="whitespace-nowrap">{until(Math.floor(t.notBefore / 1000), now)}</span>,
@@ -240,10 +240,10 @@ function Dashboard({ d, error, token }: { d: AdminOverview; error: string | null
         <Card title="People" note="app records">
           {db ? (
             <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-              <Stat label="Wallets linked to Arc" value={db.arcAccounts} />
+              <Stat label="Wallets linked" value={db.arcAccounts} />
               <Stat label="Telegram chats" value={`${db.telegram} (${db.telegramLinked} linked)`} />
               <Stat label="Agents" value={Object.entries(db.agents).map(([k, n]) => `${n} ${k}`).join(" · ") || 0} />
-              <Stat label="Agents on Arc" value={db.agentsArc} />
+              <Stat label="Agents on gno.land" value={db.agentsArc} />
               <Stat label="Deploy fees paid" value={`${db.agentPayments.count} · ${usdc(db.agentPayments.wei)}`} />
               <Stat label="Baskets" value={db.baskets} />
               <Stat label="Basket followers" value={db.subscribers} />
@@ -254,7 +254,7 @@ function Dashboard({ d, error, token }: { d: AdminOverview; error: string | null
           )}
         </Card>
 
-        <Card title="On Arc" note="backend index">
+        <Card title="On gno.land" note="backend index">
           {b ? (
             <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
               <Stat label="Accounts that staked" value={b.people.arcAccounts} />
@@ -276,7 +276,7 @@ function Dashboard({ d, error, token }: { d: AdminOverview; error: string | null
           />
         </Card>
 
-        <Card title="Contracts" note="Arc">
+        <Card title="Realms" note="gno.land">
           <Table
             head={["", "MimirV3 (VS)", "MimirPool"]}
             rows={[
@@ -286,9 +286,9 @@ function Dashboard({ d, error, token }: { d: AdminOverview; error: string | null
               ["Oracle", short(d.chain.v3.data?.oracle), short(d.chain.pool.data?.oracle)],
               ["Fee recipient", short(d.chain.v3.data?.feeRecipient), short(d.chain.pool.data?.feeRecipient)],
               ["Paused", ...[d.chain.v3, d.chain.pool].map((c, i) => <span key={i} className={c.data?.paused ? "text-danger" : ""}>{String(c.data?.paused ?? "–")}</span>)],
-              ["Cap per market (USDC)", cap(d.chain.v3.data?.maxMarketStakeWei), cap(d.chain.pool.data?.maxMarketStakeWei)],
-              ["Cap per account (USDC)", cap(d.chain.v3.data?.maxAccountStakeWei), cap(d.chain.pool.data?.maxAccountStakeWei)],
-              ["Holds (USDC)", usdc(d.chain.v3.data?.balanceWei), usdc(d.chain.pool.data?.balanceWei)],
+              ["Cap per market (mUSD)", cap(d.chain.v3.data?.maxMarketStakeWei), cap(d.chain.pool.data?.maxMarketStakeWei)],
+              ["Cap per account (mUSD)", cap(d.chain.v3.data?.maxAccountStakeWei), cap(d.chain.pool.data?.maxAccountStakeWei)],
+              ["Holds (mUSD)", usdc(d.chain.v3.data?.balanceWei), usdc(d.chain.pool.data?.balanceWei)],
               ["Owes, estimated", usdc(d.chain.solvency.vs?.owedWei), usdc(d.chain.solvency.pool?.owedWei)],
               ["Surplus", ...[d.chain.solvency.vs, d.chain.solvency.pool].map((s, i) => <span key={i} className={s ? (s.ok ? "text-win" : "text-danger") : ""}>{usdc(s?.surplusWei)}</span>)],
             ]}
@@ -297,9 +297,9 @@ function Dashboard({ d, error, token }: { d: AdminOverview; error: string | null
       </div>
 
       <div className="grid gap-5 lg:grid-cols-2">
-        <Card title="Operating wallets" note="USDC on Arc, below 1 flagged">
+        <Card title="Operating wallets" note="mUSD on gno.land, below 1 flagged">
           <Table
-            head={["Wallet", "Address", "USDC"]}
+            head={["Wallet", "Address", "mUSD"]}
             rows={(d.chain.wallets.data ?? []).map((w) => [w.label, <a key="a" href={ex("address", w.address)} target="_blank" rel="noreferrer" className="font-mono hover:text-coral">{short(w.address)}</a>, <span key="u" className={w.low ? "text-pending" : ""}>{w.usdc?.toFixed(2) ?? "–"}</span>])}
             empty={d.chain.wallets.error ?? "No wallets configured."}
           />
@@ -311,8 +311,8 @@ function Dashboard({ d, error, token }: { d: AdminOverview; error: string | null
             rows={[
               ["Backend", d.backend.ok ? "up" : "down", d.backend.ok ? `${d.backend.ms} ms` : d.backend.error],
               ["App records", d.database.ok ? "up" : "down", d.database.ok ? `${d.database.ms} ms` : d.database.error],
-              ["Arc RPC", d.chain.head.ok ? "up" : "down", d.chain.head.ok ? `block ${d.chain.head.data} · ${d.chain.head.ms} ms` : d.chain.head.error],
-              ["Base RPC", d.base.head.ok ? "up" : "down", d.base.head.ok ? `block ${d.base.head.data}` : d.base.head.error],
+              ["gno.land RPC", d.chain.head.ok ? "up" : "down", d.chain.head.ok ? `block ${d.chain.head.data} · ${d.chain.head.ms} ms` : d.chain.head.error],
+              ["Backup RPC", d.base.head.ok ? "up" : "down", d.base.head.ok ? `block ${d.base.head.data}` : d.base.head.error],
               ["Telegram", d.telegram.ok ? d.telegram.data?.bot : "down", d.telegram.ok ? `${d.telegram.data?.webhook ? "webhook" : "polling"} · ${d.telegram.data?.pending} pending${d.telegram.data?.lastError ? ` · ${d.telegram.data.lastError}` : ""}` : d.telegram.error],
             ]}
           />

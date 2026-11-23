@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * Every transaction on a market, newest first, each linked to its chain's explorer (BaseScan, ArcScan):
+ * Every transaction on a market, newest first, each linked to gnoweb:
  * opening, stakes and challenges, the oracle's proposal, disputes, settlement
  * and payouts. Plus the oracle's verdict with its audit bundle, whose hash is
  * the evidenceHash written on chain. Transparency is the point: nothing here

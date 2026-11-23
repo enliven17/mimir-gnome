@@ -1,6 +1,6 @@
 "use client";
 
-/** /dashboard (Portfolio): the connected wallet's side of Mimir on Arc (ArcDashboard). */
+/** /dashboard (Portfolio): the connected wallet's side of Mimir on gno.land (ArcDashboard). */
 import ArcDashboard from "@/components/arc/dashboard/ArcDashboard";
 import PullToRefresh from "@/components/app/PullToRefresh";
 import { arcArenaEnabled } from "@/components/arc/arena/enabled";

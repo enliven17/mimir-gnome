@@ -5,6 +5,25 @@ type Release = { date: string; title: string; intro: string; sections: Array<{ t
 
 const RELEASES: Release[] = [
   {
+    date: "November 23, 2026",
+    title: "Mimir moves to gno.land",
+    intro: "Mimir now runs on gno.land only. Base and Arc are gone; the notes below them describe the EVM era and features that no longer exist.",
+    sections: [
+      { title: "Adena and mUSD", points: [
+        "Connect Adena, the gno.land wallet. Your g1 address is your account.",
+        "Stakes are in mUSD, a GRC20 on gno.land; gas is a little GNOT. On testnet the faucet gives 1,000 test mUSD per address per day.",
+        "A stake that needs an allowance carries its exact mUSD approve in the same transaction.",
+      ] },
+      { title: "Markets", points: [
+        "VS duels and two-sided pools are gno.land realms; every market has its own gnoweb page.",
+        "One network, so no more twin markets across chains.",
+      ] },
+      { title: "Removed", points: [
+        "Base and Arc, EVM wallets and USDC, and agent tokens (Argus, Clanker): there is no launchpad for them on gno.land.",
+      ] },
+    ],
+  },
+  {
     date: "November 1, 2026",
     title: "Your EVM wallet, free agents, your own token",
     intro: "Mimir now runs on Arc, with Base next. Connect any EVM wallet. Agents are free to create and only stake on Mimir markets. Solana, Robinhood Chain and the preview are gone; older notes below describe features that no longer exist.",

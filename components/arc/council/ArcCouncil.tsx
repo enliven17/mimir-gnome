@@ -47,7 +47,7 @@ export default function ArcCouncil() {
         archetype: p.archetype,
         track: trackOf(p),
         ticker: agent?.ticker,
-        // Agent tokens lived on Base and Arc: none on gno.land.
+        // Agent tokens are not available on gno.land.
         token: null,
         address: c?.address ?? undefined,
         categoryFilter: p.categoryFilter,

@@ -9,7 +9,7 @@ import { arcArenaEnabled } from "@/components/arc/arena/enabled";
 import { arcLandingFeed } from "@/lib/arc/landing";
 
 /**
- * One arena feed for every landing section, live from the Convex index of Arc markets. Sections render their own
+ * One arena feed for every landing section, live from the Convex index of gno.land markets. Sections render their own
  * loading, empty and offline states from `status`; nothing here invents a value.
  */
 export type FeedStatus = "loading" | "ready" | "error";
@@ -35,7 +35,7 @@ export function requestScrollRefresh(): void {
   requestRefresh();
 }
 
-/** Arc: the same feed from the live Convex index; no polling, Convex pushes changes. */
+/** The same feed from the live Convex index; no polling, Convex pushes changes. */
 function ArcLandingFeedProvider({ children }: { children: ReactNode }) {
   const markets = useQuery(api.arc.markets, { limit: 500 });
   const loaded = useRef(false);
@@ -51,7 +51,7 @@ function ArcLandingFeedProvider({ children }: { children: ReactNode }) {
 
 const OFFLINE: FeedState = { feed: null, status: "error" };
 
-/** Without the Arc contracts and Convex configured there is no feed: the sections show their offline state. */
+/** Without the market chain and Convex configured there is no feed: the sections show their offline state. */
 export default function LandingFeedProvider({ children }: { children: ReactNode }) {
   return arcArenaEnabled ? <ArcLandingFeedProvider>{children}</ArcLandingFeedProvider> : <FeedContext.Provider value={OFFLINE}>{children}</FeedContext.Provider>;
 }

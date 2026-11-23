@@ -60,7 +60,7 @@ export default function CreateChallengeTicket(p: CreateChallengeTicketProps) {
       </div>
       <dl className="kv">
         <dt>{tf("reviewStake")}</dt>
-        <dd className="text-cream">{stake} USDC</dd>
+        <dd className="text-cream">{stake} mUSD</dd>
         <dt>{tf("reviewDeadline")}</dt>
         <dd>{p.deadline ? new Date(p.deadline * 1000).toLocaleString("en-US") : "-"}</dd>
         <dt>{tf("reviewSource")}</dt>

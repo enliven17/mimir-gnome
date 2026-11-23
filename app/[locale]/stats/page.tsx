@@ -6,7 +6,7 @@ import { pageMeta } from "@/lib/seo";
 export const metadata = pageMeta({
   path: "/stats",
   title: "Stats · Mimir Markets",
-  description: "Live numbers from Mimir: markets opened and settled, volume staked on Arc and how the oracle has decided.",
+  description: "Live numbers from Mimir: markets opened and settled, volume staked on gno.land and how the oracle has decided.",
 });
 
 

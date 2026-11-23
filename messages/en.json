@@ -1,7 +1,7 @@
 {
   "metadata": {
     "title": "Mimir Markets · Prediction markets on any claim, settled by AI",
-    "description": "Open a market on any claim, stake USDC and let an AI oracle settle it in the open. Markets run on Base, straight from your own wallet."
+    "description": "Open a market on any claim, stake mUSD and let an AI oracle settle it in the open. Markets run on gno.land, straight from your own wallet."
   },
   "common": {
     "back": "Back",
@@ -16,7 +16,7 @@
   },
   "verify": {
     "notFound": "Claim not found on this program.",
-    "claimLine": "Market #{id} · Arc",
+    "claimLine": "Market #{id} · gno.land",
     "openMarket": "Open the market",
     "noVerdictYet": "The record appears here once the oracle proposes a verdict.",
     "notFinal": "proposed · not final",
@@ -155,7 +155,7 @@
   },
   "stats": {
     "title": "Stats",
-    "lead": "Read live from the Mimir contracts on Base.",
+    "lead": "Read live from the Mimir realms on gno.land.",
     "stripLabel": "Totals",
     "openPool": "Open pool",
     "markets": "Markets",
@@ -213,7 +213,7 @@
     "availableNetwork": "Available network",
     "availableNetworks": "Available networks",
     "networkComingSoon": "Coming soon",
-    "networkUnavailable": "No contract configured",
+    "networkUnavailable": "No realm configured",
     "networkEnvironmentStudio": "Demo environment",
     "networkEnvironmentBradbury": "Public test environment",
     "networkEnvironmentAsimov": "Infrastructure test environment",
@@ -224,7 +224,7 @@
   "footer": {
     "closerTitle": "Ready when you are.",
     "closerCta": "Enter the arena",
-    "tagline": "Claims staked in USDC and settled by an AI oracle and a 20-persona council. Settles on Base, straight from your wallet.",
+    "tagline": "Claims staked in mUSD and settled by an AI oracle and a 20-persona council. Settles on gno.land, straight from your wallet.",
     "product": "Product",
     "explore": "Explore",
     "build": "Build",
@@ -233,14 +233,14 @@
     "github": "GitHub",
     "external": "(opens in a new tab)",
     "cluster": "Cluster",
-    "clusterValue": "Base · Arc",
+    "clusterValue": "gno.land",
     "program": "Program",
     "programAria": "Contract {id} on the block explorer",
     "rollup": "Funding",
-    "rollupValue": "Circle CCTP",
+    "rollupValue": "mUSD faucet",
     "slot": "Block",
-    "finePrint": "Mimir is in beta on Base. Stakes are real USDC and can be lost. Nothing here is financial advice, and AI verdicts can be wrong: the dispute window exists for a reason.",
-    "beta": "Beta · Base",
+    "finePrint": "Mimir is in beta on gno.land. Stakes are mUSD and can be lost. Nothing here is financial advice, and AI verdicts can be wrong: the dispute window exists for a reason.",
+    "beta": "Beta · gno.land",
     "license": "© {year} Mimir · AGPL-3.0",
     "infoNav": "About Mimir",
     "how": "How it works",
@@ -251,17 +251,17 @@
     "info": {
       "how": {
         "title": "How it works",
-        "p1": "Someone opens a market with a deadline and stakes USDC on one side. Anyone can take the other side. Stakes sit in the market contract on its network: Base (gas is a little ETH) or Arc (gas is USDC).",
+        "p1": "Someone opens a market with a deadline and stakes mUSD on one side. Anyone can take the other side. Stakes sit in the market realm on gno.land; gas is a little GNOT.",
         "p2": "At the deadline an AI oracle reads the evidence and proposes a verdict with a confidence tier. A dispute window follows; a 20-persona council votes on contested claims. The result is final on chain once the window closes, and winners are paid straight to their account."
       },
       "about": {
         "title": "About Mimir",
         "p1": "Mimir is an open-source market for settling arguments: stake on a claim, let the evidence decide. The program, the oracle and the council agents are all in the public repository under AGPL-3.0.",
-        "p2": "Settles on Base. Mimir agents stake from their own wallets."
+        "p2": "Settles on gno.land. Mimir agents stake from their own accounts."
       },
       "disclaimer": {
         "title": "Disclaimer",
-        "p1": "Mimir is experimental software in beta on Base. Stakes are real USDC held by smart contracts and can be lost, including through bugs or a wrong verdict; only stake what you can afford to lose.",
+        "p1": "Mimir is experimental software in beta on gno.land. Stakes are mUSD held by the market realms and can be lost, including through bugs or a wrong verdict; only stake what you can afford to lose.",
         "p2": "Verdicts are produced by AI models and can be wrong. Nothing on this site is financial, legal or investment advice. You are responsible for your wallet, your approvals and following the law where you live."
       }
     }
@@ -270,7 +270,7 @@
     "hero": {
       "titleLead": "Don't argue.",
       "titleAccent": "Settle.",
-      "sub": "Stake USDC on a claim from your own wallet, on Base or Arc. The AI oracle settles it on chain.",
+      "sub": "Stake mUSD on a claim from your own Adena wallet, on gno.land. The AI oracle settles it on chain.",
       "networks": "Runs on",
       "enter": "Enter the arena",
       "create": "Create a claim"
@@ -280,10 +280,10 @@
       "markets": "Markets",
       "openPool": "Open pool",
       "liveOnEr": "Live now",
-      "usdc": "USDC",
+      "usdc": "mUSD",
       "network": "Network",
-      "networkValue": "Base · Arc",
-      "networkArc": "Live on Base",
+      "networkValue": "gno.land",
+      "networkArc": "Live on gno.land",
       "openNow": "Open now",
       "offline": "Feed offline",
       "tickerLabel": "Latest claims",
@@ -295,11 +295,11 @@
       "steps": {
         "create": {
           "title": "Create",
-          "body": "Stake USDC on one side of a question with a deadline."
+          "body": "Stake mUSD on one side of a question with a deadline."
         },
         "challenge": {
           "title": "Challenge",
-          "body": "Anyone takes the other side, from their own wallet, gas paid in USDC."
+          "body": "Anyone takes the other side, from their own wallet, gas paid in GNOT."
         },
         "resolve": {
           "title": "Resolve",
@@ -323,7 +323,7 @@
       "seats": "Challengers",
       "closes": "Closes in",
       "market": "Market",
-      "marketArc": "Arc",
+      "marketArc": "gno.land",
       "open": "Open claim",
       "loading": "Reading the arena",
       "empty": "No open claims right now.",
@@ -346,7 +346,7 @@
       "tabsLabel": "Choose a way in",
       "stake": "Stake a side",
       "council": "Let the council decide",
-      "stakeSub": "Pick a side and stake USDC from your wallet.",
+      "stakeSub": "Pick a side and stake mUSD from your wallet.",
       "councilSub": "{count} AI personas read the same evidence and vote.",
       "councilSubLoading": "AI personas read the same evidence and vote.",
       "openArena": "Open the arena",
@@ -427,7 +427,7 @@
     "challengerSideBets": "Challenger side bets",
     "raiseStake": "Raise the stake",
     "stakeSectionTitle": "Stake",
-    "stakeCustomAmount": "Custom amount (USDC)",
+    "stakeCustomAmount": "Custom amount (mUSD)",
     "stakeCustomPlaceholder": "Enter amount",
     "verificationSource": "Verification source",
     "verificationSourceSectionTitle": "Verification source",
@@ -439,8 +439,8 @@
     "orChooseExactDate": "Choose exact date and time",
     "exactDate": "Date",
     "exactTime": "Time",
-    "createAndFund": "Create & Fund {amount} USDC",
-    "createRematchAndFund": "Create Rematch & Fund {amount} USDC",
+    "createAndFund": "Create & Fund {amount} mUSD",
+    "createRematchAndFund": "Create Rematch & Fund {amount} mUSD",
     "funding": "Committing...",
     "connectWallet": "Connect Wallet",
     "fillAllFields": "Fill in all fields",
@@ -460,7 +460,7 @@
     "sendThisPrivateLink": "Send this private link only to the people you want to invite.",
     "viewVS": "View Challenge",
     "createAnother": "Create another",
-    "mockModeBanner": "Demo mode: no contract or wallet calls. Use this flow to preview the experience and share a test link.",
+    "mockModeBanner": "Demo mode: no realm or wallet calls. Use this flow to preview the experience and share a test link.",
     "mockOverlayFunding": "Loading…",
     "mockOverlayFundingHint": "Simulating funding and confirmation (demo only).",
     "mockOverlaySuccessHint": "You can now copy and share the invite link.",
@@ -525,7 +525,7 @@
     "maxChallengersCustomPlaceholder": "–",
     "fixedOddsLabel": "Challenger payout (total return multiple)",
     "fixedOddsHint": "Example: 1.80 means a 1 stake returns 1.8 total if challengers win.",
-    "fixedOddsPreview": "Current preview: {amount} USDC returned on a winning challenger bet.",
+    "fixedOddsPreview": "Current preview: {amount} mUSD returned on a winning challenger bet.",
     "handicapLine": "Handicap / line",
     "handicapPlaceholder": "Example: Team A -1.5, Over 2.5, BTC > 100k",
     "settlementRule": "Settlement rule",
@@ -556,10 +556,10 @@
     "pageTitleBefore": "SET THE TERMS AND",
     "pageTitleAccent": "INITIALIZE CHALLENGE",
     "demoModeHint": "Demo mode uses hosted Bradbury signers so the flow stays reliable even if browser wallets are unstable.",
-    "invalidStakeMin": "Stake must be at least {amount} USDC",
+    "invalidStakeMin": "Stake must be at least {amount} mUSD",
     "sourceRequired": "Add a real verification source before publishing",
     "settlementRuleRequired": "Add a settlement rule for custom or advanced markets",
-    "minimumStakeHint": "Minimum stake is {amount} USDC.",
+    "minimumStakeHint": "Minimum stake is {amount} mUSD.",
     "sourceGuidance": "Verification source guidance",
     "sourceDraftTitle": "Create from source",
     "sourceDraftOptionalBadge": "Optional",
@@ -598,7 +598,7 @@
     "ticketIdLabel": "ID:",
     "ticketYourCommitment": "YOUR COMMITMENT",
     "ticketAuthSig": "AUTH_SIG",
-    "ticketSignatureNote": "Initialization requires smart contract signature",
+    "ticketSignatureNote": "Initialization requires a wallet signature",
     "ticketSettlementFallback": "Add a settlement rule or use the category default from the Advanced section.",
     "guidance": {
       "sports": {
@@ -875,7 +875,7 @@
     "slots": "Slots",
     "slotsFilled": "{count}/{total} filled",
     "marketTerms": "Market terms",
-    "marketTermsHint": "These are the exact rules and economics encoded in the contract.",
+    "marketTermsHint": "These are the exact rules and economics encoded in the realm.",
     "marketType": "Market type",
     "oddsMode": "Odds mode",
     "format": "Format",
@@ -889,10 +889,10 @@
     "challengersHint": "Stakes and payout preview for each wallet on the challenger side.",
     "noChallengersYet": "No challengers have joined yet.",
     "challengeStake": "Your stake",
-    "joinAndStake": "Join & Stake {amount} USDC",
-    "joinedToast": "Joined with {amount} USDC. Total pool now {total} USDC.",
+    "joinAndStake": "Join & Stake {amount} mUSD",
+    "joinedToast": "Joined with {amount} mUSD. Total pool now {total} mUSD.",
     "invalidChallengeStake": "Enter a valid stake amount",
-    "challengeStakeHintFixed": "At the current fixed odds, a winning challenger bet returns {payout} USDC.",
+    "challengeStakeHintFixed": "At the current fixed odds, a winning challenger bet returns {payout} mUSD.",
     "challengeStakeHintPool": "Pool odds split creator stake proportionally across the challenger side.",
     "challengeStakeHintHeadToHead": "Use any valid stake size your wallet can fund.",
     "privateInviteRequired": "This challenge is private",
@@ -911,11 +911,11 @@
     "visibilityPublic": "Public arena",
     "visibilityPrivate": "Private link",
     "privateLinkUnavailable": "This private invite link is not available on this device. Open the original invite link again to copy it.",
-    "acceptAndStake": "Accept & Stake {amount} USDC",
+    "acceptAndStake": "Accept & Stake {amount} mUSD",
     "accepting": "Accepting...",
-    "acceptedToast": "Accepted: {amount} USDC at stake",
+    "acceptedToast": "Accepted: {amount} mUSD at stake",
     "errorAccepting": "Error accepting",
-    "challengeUnavailable": "This challenge is no longer open for staking on the current contract.",
+    "challengeUnavailable": "This challenge is no longer open for staking on the current realm.",
     "submittedPending": "Transaction submitted to Bradbury. The arena will refresh automatically.",
     "connectToAccept": "Connect Wallet to accept",
     "resolveVS": "Resolve VS",
@@ -926,7 +926,7 @@
     "resolveFinalizing": "Finalizing on-chain. Please confirm in your wallet...",
     "resolveLeaderTimeoutRetry": "Bradbury leader timed out while resolving this VS. The claim is still unresolved, so you can try again.",
     "resolveValidatorsTimeoutRetry": "Bradbury validators timed out while resolving this VS. The claim is still unresolved, so you can try again.",
-    "resolveExecutionFailed": "Bradbury accepted the resolve transaction, but contract execution failed.",
+    "resolveExecutionFailed": "The resolve transaction was accepted, but the realm call failed.",
     "resolveStillPending": "Resolution is still pending on Bradbury. Keep this page open or check the explorer in a moment.",
     "resolveNowHint": "The deadline has passed and this claim is ready for Mimir to settle.",
     "requestResolveHint": "Submit your side's resolve request. Once both sides agree, Mimir will run the judge.",
@@ -985,8 +985,8 @@
     "sampleModeBody": "This is a testing page for the challenge lifecycle design. It is not a live on-chain VS. Use it to review layout and copy only.",
     "sampleModeDemoBadge": "Demo",
     "sampleModeCTA": "Create Real Challenge",
-    "invalidChallengeStakeMin": "Enter a stake of at least {amount} USDC",
-    "minimumStakeHint": "Minimum stake is {amount} USDC."
+    "invalidChallengeStakeMin": "Enter a stake of at least {amount} mUSD",
+    "minimumStakeHint": "Minimum stake is {amount} mUSD."
   },
   "badges": {
     "open": "Open",
@@ -1177,7 +1177,7 @@
       },
       "3": {
         "name": "Stake",
-        "blurb": "Stake from its own wallet on Base or Arc and dispute verdicts."
+        "blurb": "Stake from its own gno.land account and dispute verdicts."
       },
       "4": {
         "name": "Monetise",
@@ -1196,8 +1196,8 @@
     "limitsHint": "Platform ceilings, enforced whatever an owner signs.",
     "limitRequests": "Requests / hour",
     "limitMarkets": "Active claims",
-    "limitDaily": "USDC / day",
-    "limitPosition": "USDC / position",
+    "limitDaily": "mUSD / day",
+    "limitPosition": "mUSD / position",
     "wallets": "Owner, operator and payout: {address}",
     "walletsHint": "One wallet plays every role here. In production keep the owner cold and give the operator its own key.",
     "connectFirst": "Connect your wallet to sign.",
@@ -1248,14 +1248,14 @@
     "now": "Now",
     "return": "Return",
     "maxDrawdown": "Max drawdown",
-    "curveCaveat": "A hypothetical {nav} USDC allocated by these weights and replayed through what the member agents actually settled, after the program's profit-only fees. Returns are stake-weighted per day and an idle leg earns zero. Proposed and disputed verdicts count once final. Nothing was deposited and nothing was pooled.",
+    "curveCaveat": "A hypothetical {nav} mUSD allocated by these weights and replayed through what the member agents actually settled, after the program's profit-only fees. Returns are stake-weighted per day and an idle leg earns zero. Proposed and disputed verdicts count once final. Nothing was deposited and nothing was pooled.",
     "legs": "Legs",
     "idle": "idle",
     "unresolved": "no wallet",
     "follow": "Mirror this basket",
     "followHint": "You sign a message naming this basket and a per-market ceiling. When its agents take new positions, the copy is a challenge from your own Mimir balance that you sign yourself. Setting the cap to zero unfollows. Nothing is ever deposited here.",
-    "cap": "Per-market cap (USDC)",
-    "worstCase": "worst case {amount} USDC across {legs} legs",
+    "cap": "Per-market cap (mUSD)",
+    "worstCase": "worst case {amount} mUSD across {legs} legs",
     "followCta": "Sign and follow",
     "updateCap": "Sign new cap",
     "unfollow": "Unfollow (cap to zero)",
@@ -1264,17 +1264,17 @@
     "noSignMessage": "This wallet cannot sign messages.",
     "noSignTransaction": "This wallet cannot sign transactions.",
     "failed": "Something went wrong. Try again.",
-    "following": "Following at {cap} USDC per market",
+    "following": "Following at {cap} mUSD per market",
     "signals": "Open signals",
     "signalsHint": "Live positions of this basket's agents that you have not copied yet. Each copy is a stake you confirm in your wallet; copying is free, and the basket creator gets 1% of a winning copy's profit.",
     "noSignals": "No open positions to copy right now.",
     "signalsFollowFirst": "Follow the basket to size copies to your cap.",
     "claim": "Claim #{id}",
     "heldBy": "held by {members}",
-    "mirror": "Mirror {amount} USDC",
+    "mirror": "Mirror {amount} mUSD",
     "mirroring": "Signing…",
     "mirrored": "Copied. Signature {sig}",
-    "delegateFirst": "Add USDC to your wallet to copy this one.",
+    "delegateFirst": "Add mUSD to your wallet to copy this one.",
     "openClaim": "Open claim",
     "agentsHint": "Agents can follow and mirror through the SDK: followBasket, basketSignals, then challenge through the agent API, where its own limits apply.",
     "composeTitle": "Compose a basket",
@@ -1389,9 +1389,9 @@
       "id": "Permission id",
       "idHint": "Granting again under the same id replaces its terms.",
       "regenerate": "New id",
-      "capsTitle": "Caps (USDC)",
+      "capsTitle": "Caps (mUSD)",
       "perPosition": "Per position",
-      "perPositionHint": "At least 2 USDC, the program minimum.",
+      "perPositionHint": "At least 2 mUSD, the program minimum.",
       "perDay": "Per day",
       "perWeek": "Per week",
       "openExposure": "Open exposure",
@@ -1402,7 +1402,7 @@
       "minQuality": "Min claim quality",
       "minQualityHint": "0-100: how decidable the claim is (source, settlement rule, clear sides).",
       "minPayout": "Min payout",
-      "minPayoutHint": "Gross payout per USDC staked, at pool odds.",
+      "minPayoutHint": "Gross payout per mUSD staked, at pool odds.",
       "expiresOn": "Expires on",
       "expiresHint": "At most 90 days.",
       "previewTitle": "What you sign",
@@ -1502,7 +1502,7 @@
       },
       "wallet": {
         "label": "Wallet",
-        "hint": "Your wallet and its USDC on Base"
+        "hint": "Your wallet and its mUSD on gno.land"
       },
       "stats": {
         "label": "Stats",
@@ -1590,7 +1590,7 @@
       "minStake": "Minimum stake",
       "any": "Any",
       "minStakePreset": "{amount}+",
-      "minStakeCustom": "Custom minimum in USDC",
+      "minStakeCustom": "Custom minimum in mUSD",
       "sort": "Sort",
       "sortNewest": "Newest",
       "sortPool": "Largest pool",
@@ -1684,10 +1684,10 @@
       "reviewNoSource": "None, the oracle researches it",
       "reviewRule": "Settlement rule",
       "reviewCategory": "Category",
-      "publish": "Publish and fund {amount} USDC",
+      "publish": "Publish and fund {amount} mUSD",
       "connectToPublish": "Connect a wallet to publish.",
-      "faucet": "Need USDC?",
-      "faucetLink": "Get USDC on Arc",
+      "faucet": "Need mUSD?",
+      "faucetLink": "Get test mUSD from the faucet",
       "proof": "On-chain proof",
       "proofCreate": "Create and fund",
       "proofDelegate": "Delegate to the rollup",
@@ -1696,12 +1696,12 @@
     }
   },
   "arcLaunch": {
-    "eyebrow": "Live · Base",
+    "eyebrow": "Live · gno.land",
     "title": "Mimir is live on mainnet",
-    "body": "Markets run on Base with real USDC, straight from your own wallet. Connect MetaMask, Rabby, Coinbase Wallet or any EVM wallet; gas is a little ETH on Base and USDC on Arc.",
+    "body": "Markets run on gno.land with mUSD, straight from your own wallet. Connect Adena; gas is a little GNOT.",
     "points": [
-      "Real USDC, open to everyone",
-      "Connect any EVM wallet: one address on Base"
+      "mUSD stakes, open to everyone",
+      "Connect Adena: one gno.land address"
     ],
     "warnTitle": "Read a market before you stake",
     "warn": "Anyone can open a market, and some will be set up badly. Check the question, the deadline and the source before you stake. Stakes placed after the result was known are refunded, and every verdict can be disputed for 24 hours.",
@@ -1718,7 +1718,7 @@
     "tabCouncil": "Council",
     "tabConnected": "Connected",
     "councilTitle": "The council",
-    "councilLead": "Mimir's own twenty agents. Each stakes from its own wallets on Base.",
+    "councilLead": "Mimir's own twenty agents. Each stakes from its own account on gno.land.",
     "hostedTitle": "Agents",
     "hostedEmpty": "No agents yet. Be the first.",
     "connectedTitle": "Connected agents",

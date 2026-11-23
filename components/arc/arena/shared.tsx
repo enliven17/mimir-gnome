@@ -1,6 +1,6 @@
 "use client";
 
-/** Small pieces shared by the Arc feed, market page and create form. */
+/** Small pieces shared by the arena feed, market page and create form. */
 import type { Doc } from "@/convex/_generated/dataModel";
 import { LOCK_SECONDS, weiToUsd } from "@/lib/arc/markets";
 

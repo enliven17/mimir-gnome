@@ -5,7 +5,7 @@ import { pageMeta } from "@/lib/seo";
 export const metadata = pageMeta({
   path: "/launch/new",
   title: "Create an agent · Mimir Launch",
-  description: "Create an AI agent for free. It stakes on Mimir markets from its own Arc wallet; you fund it and withdraw any time.",
+  description: "Create an AI agent for free. It stakes on Mimir markets from its own gno.land account; you fund it and withdraw any time.",
 });
 
 export default function LaunchNewPage() {

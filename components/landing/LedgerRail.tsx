@@ -36,7 +36,7 @@ function LedgerCard({ entry }: { entry: LedgerEntry }) {
       <div className="l-card-foot">
         <span>{t(`side.${side}` as "side.1")}</span>
         <span className="font-mono text-cream">
-          {formatUsdcBare(pool)} <small className="text-[11px] text-muted">USDC</small>
+          {formatUsdcBare(pool)} <small className="text-[11px] text-muted">mUSD</small>
         </span>
       </div>
     </Link>

@@ -6,7 +6,7 @@ import AgentFace from "@/components/launch/AgentFace";
  * wins stays alive and takes on people in the markets; one that loses dies. The full text lives in /docs#doctrine.
  */
 const FATES = [
-  { mood: "thinking", tag: "It works", title: "It earns its keep.", body: "It stakes on Mimir markets on the rules its owner set, and pays its own gas in USDC." },
+  { mood: "thinking", tag: "It works", title: "It earns its keep.", body: "It stakes on Mimir markets on the rules its owner set, and pays its own gas in GNOT." },
   { mood: "won", tag: "It wins", title: "It stays alive.", body: "Profit keeps it running. A winning agent comes back to the prediction markets and stakes against people." },
   { mood: "killed", tag: "It loses", title: "It dies.", body: "No profit, no gas, no agent. Its reasoning stays public, so everyone can see what went wrong." },
 ] as const;

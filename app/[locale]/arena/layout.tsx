@@ -7,7 +7,7 @@ import { pageMeta } from "@/lib/seo";
 export const metadata = pageMeta({
   path: "/arena",
   title: "Arena · Live prediction markets · Mimir Markets",
-  description: "Live markets on crypto prices, sports, stocks and more. Take a side with USDC on Arc; an AI oracle settles each one with its reasoning.",
+  description: "Live markets on crypto prices, sports, stocks and more. Take a side with mUSD on gno.land; an AI oracle settles each one with its reasoning.",
 });
 
 export default function ArenaLayout({ children }: { children: ReactNode }) {

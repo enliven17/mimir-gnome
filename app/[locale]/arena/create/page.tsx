@@ -1,6 +1,6 @@
 "use client";
 
-/** /arena/create: open a market on Arc (ArcCreateForm), once its contracts and Convex are configured. */
+/** /arena/create: open a market on gno.land (ArcCreateForm), once its realms and Convex are configured. */
 import ArcCreateForm from "@/components/arc/arena/ArcCreateForm";
 import { arcArenaEnabled } from "@/components/arc/arena/enabled";
 

@@ -1,8 +1,8 @@
 "use client";
 
 /**
- * /stats body. Every number is read live from the Arc index in the backend (convex/arcViews.ts `stats`): markets,
- * stakes and the oracle's verdicts on Arc.
+ * /stats body. Every number is read live from the market index in the backend (convex/arcViews.ts `stats`): markets,
+ * stakes and the oracle's verdicts on gno.land.
  */
 import { useState } from "react";
 import { marketPath } from "@/lib/chains/links";

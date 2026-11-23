@@ -29,7 +29,7 @@ const SCENE: Record<Zone, { line: string; mood: ExpressionName }> = {
   how: { line: "The oracle reads the source.", mood: "thinking" },
   claim: { line: "Every verdict is public.", mood: "curious" },
   dial: { line: "That's my council.", mood: "won" },
-  ledger: { line: "Settled on Arc.", mood: "bought" },
+  ledger: { line: "Settled on gno.land.", mood: "bought" },
   footer: { line: "Launch one like me.", mood: "aiming" },
 };
 const POKES = ["Hey! That tickles.", "Boop.", "Still here.", "Launch me?"];

@@ -120,7 +120,7 @@ export default function BasketCurve({ values, labels, baseline, interactive = fa
             style={{ left: `${Math.min(88, Math.max(12, (at[0] / W) * 100))}%` }}
           >
             {labels?.[hover] ? <span className="text-muted">{labels[hover]} · </span> : null}
-            {formatUsdcBare(values[hover])} USDC
+            {formatUsdcBare(values[hover])} mUSD
           </span>
         </>
       ) : null}
