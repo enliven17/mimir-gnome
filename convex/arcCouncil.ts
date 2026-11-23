@@ -252,12 +252,9 @@ async function writeTakes(ctx: ActionCtx, markets: Market[], evidenceCache: Map<
         await throttle();
         const result = await evaluateClaimAsPersona(persona, claim, evidence.text, { mode: "take" });
         const evidenceHash = bytesToHex(sha256(new TextEncoder().encode(evidence.text)));
-        // One call, every leg: the same take on Base and Arc.
-        for (const leg of legs) {
-          const forecast = { ...ref(leg), slug: persona.slug, lean: LEAN[result.verdict], confidence: result.confidence, text: result.explanation.slice(0, 600) };
-          if (!featured && persona.slug === lead.slug) await ctx.runMutation(internal.arcCouncilDb.saveTake, { ...forecast, creator });
-          if (radarOn) await ctx.runMutation(internal.councilOpinions.record, { ...forecast, evidenceHash });
-        }
+        const forecast = { chain: m.chain, kind: m.kind, marketId: m.marketId, slug: persona.slug, lean: LEAN[result.verdict], confidence: result.confidence, text: result.explanation.slice(0, 600) };
+        if (!featured && persona.slug === lead.slug) await ctx.runMutation(internal.arcCouncilDb.saveTake, { ...forecast, creator });
+        if (radarOn) await ctx.runMutation(internal.councilOpinions.record, { ...forecast, evidenceHash });
       } catch (err) {
         console.warn(`[council] forecast on ${m.chain} ${m.kind} #${m.marketId}:`, err instanceof Error ? err.message : err);
       }
