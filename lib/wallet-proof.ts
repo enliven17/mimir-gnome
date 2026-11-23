@@ -1,12 +1,12 @@
 /**
- * Wallet proof: a signed statement that the caller controls an EVM wallet, so a server route can act for that wallet
- * (follows, access, invite codes).
+ * Wallet proof: a signed statement that the caller controls a gno.land address, so a server route can act for that
+ * wallet (follows, access, invite codes).
  *
- * The browser signs `walletProofMessage` once with the connected wallet (EIP-191 personal_sign, lib/owner.ts) and
- * sends it on requests as
+ * The browser signs `walletProofMessage` once with Adena (SignArbitrary, lib/owner.ts verifies it) and sends it on
+ * requests as
  *
- *   x-mimir-wallet: <0x address>
- *   x-mimir-proof:  <signedAt ms>.<0x hex signature>
+ *   x-mimir-wallet: <g1 address>
+ *   x-mimir-proof:  <signedAt ms>.<base64url of the SignedArbitraryData JSON>
  *
  * It moves nothing and authorizes nothing else. It expires after WALLET_PROOF_TTL_MS. Pure and isomorphic.
  */
@@ -24,20 +24,32 @@ export function walletProofMessage(wallet: string, signedAt: number): string {
   ].join("\n");
 }
 
-export function formatProofHeader(signedAt: number, signature: string): string {
-  return `${signedAt}.${signature}`;
+const toBase64Url = (s: string) =>
+  (typeof Buffer !== "undefined" ? Buffer.from(s, "utf8").toString("base64") : btoa(unescape(encodeURIComponent(s))))
+    .replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+
+function fromBase64Url(s: string): string | null {
+  try {
+    const b64 = s.replace(/-/g, "+").replace(/_/g, "/");
+    return typeof Buffer !== "undefined" ? Buffer.from(b64, "base64").toString("utf8") : decodeURIComponent(escape(atob(b64)));
+  } catch {
+    return null;
+  }
 }
 
-/** `{signedAt, signature}` from the header value, or null when malformed or expired. */
-export function parseProofHeader(
-  value: string | null | undefined,
-  now = Date.now(),
-): { signedAt: number; signature: `0x${string}` } | null {
-  // 65 bytes for a plain wallet; longer for a smart wallet (ERC-1271 / ERC-6492).
-  const m = /^(\d{12,14})\.(0x[0-9a-fA-F]{130,20000})$/.exec((value ?? "").trim());
+/** `signature` is the signStatement result (a JSON string); headers carry it base64url-encoded. */
+export function formatProofHeader(signedAt: number, signature: string): string {
+  return `${signedAt}.${toBase64Url(signature)}`;
+}
+
+/** `{signedAt, signature}` (the JSON proof) from the header value, or null when malformed or expired. */
+export function parseProofHeader(value: string | null | undefined, now = Date.now()): { signedAt: number; signature: string } | null {
+  const m = /^(\d{12,14})\.([A-Za-z0-9_-]{16,20000})$/.exec((value ?? "").trim());
   if (!m) return null;
   const signedAt = Number(m[1]);
   // A little clock skew into the future is fine; a lot is not.
   if (signedAt > now + 5 * 60_000 || now - signedAt > WALLET_PROOF_TTL_MS) return null;
-  return { signedAt, signature: m[2] as `0x${string}` };
+  const signature = fromBase64Url(m[2]);
+  if (!signature?.startsWith("{")) return null;
+  return { signedAt, signature };
 }

@@ -2,7 +2,8 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { getFunctionName } from "convex/server";
 import { encodeAbiParameters, encodeEventTopics, getAddress, keccak256, type Hex } from "viem";
-import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
+import { GNO } from "../../lib/gno/config";
+import { testAccount } from "../helpers/gno-sign";
 
 import { create, CreateBody } from "../../lib/launch/flow";
 import { openKey } from "../../lib/launch/byok";
@@ -105,9 +106,9 @@ test("create: a council persona's ticker is refused before anything is made", as
 });
 
 test("auth: the signed message binds action, agent and body; stale signatures are refused", async () => {
-  const acct = privateKeyToAccount(generatePrivateKey());
+  const acct = await testAccount();
   const m = { action: "token" as const, owner: acct.address, agent: "njord", bodySha256: "ab", signedAt: Date.now() };
-  const signature = await acct.signMessage({ message: launchMessage(m) });
+  const signature = await acct.sign(launchMessage(m), GNO.chainId);
   assert.ok(await verifyWalletSignature({ address: acct.address, message: launchMessage(m), signature }));
   assert.ok(!(await verifyWalletSignature({ address: acct.address, message: launchMessage({ ...m, agent: "odin" }), signature })));
   assert.ok(!(await verifyWalletSignature({ address: acct.address, message: launchMessage({ ...m, action: "status" }), signature })));

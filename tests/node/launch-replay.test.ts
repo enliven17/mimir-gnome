@@ -6,7 +6,8 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { build } from "esbuild";
-import { privateKeyToAccount } from "viem/accounts";
+import { GNO } from "../../lib/gno/config";
+import { testAccount } from "../helpers/gno-sign";
 import { launchMessage, LAUNCH_HEADERS, LAUNCH_SIG_TTL_MS, type LaunchAction } from "../../lib/launch/auth";
 
 test("Launch authorization is consumed once across encodings, windows and server instances", async t => {
@@ -16,12 +17,14 @@ test("Launch authorization is consumed once across encodings, windows and server
   const envKeys = ["MIMIR_STORE_SECRET", "NEXT_PUBLIC_CONVEX_URL", "MIMIR_BACKEND_OFF"] as const;
   const oldEnv = Object.fromEntries(envKeys.map(k => [k, process.env[k]]));
   const secret = "fixture-store-secret-not-real";
-  const account = privateKeyToAccount(`0x${"0".repeat(63)}1`);
+  const account = await testAccount();
   let now = 1_800_000_599_999;
   try {
-    const entry = `export {readSigned} from './lib/launch/request';export {useMemoryStore} from './lib/server/store';export {memoryBackend} from './tests/helpers/convex-memory';export {tx,sweep} from './convex/appStore';export {verifyOwnerSignature} from './lib/owner';`;
+    const entry = `export {readSigned} from './lib/launch/request';export {useMemoryStore} from './lib/server/store';export {memoryBackend} from './tests/helpers/convex-memory';export {tx,sweep} from './convex/appStore';export {verifyOwnerSignature} from './lib/owner';export {marketDeployment} from './lib/chains/deployment';export {serverMarketChains} from './lib/chains/registry';`;
     const out = join(temp, "request.mjs");
-    await build({ stdin: { contents: entry, resolveDir: root, loader: "ts" }, outfile: out, bundle: true, platform: "node", format: "esm", tsconfig: join(root, "tsconfig.json"), plugins: [{ name: "server-only-test", setup(b) {
+    await build({ stdin: { contents: entry, resolveDir: root, loader: "ts" }, outfile: out, bundle: true, platform: "node", format: "esm",
+      // Bundled CommonJS dependencies (the Adena SDK's) require Node builtins: give the ESM bundle a require.
+      banner: { js: "import { createRequire as __cr } from 'node:module'; const require = __cr(import.meta.url);" }, tsconfig: join(root, "tsconfig.json"), plugins: [{ name: "server-only-test", setup(b) {
       b.onResolve({ filter: /^server-only$/ }, () => ({ path: "server-only", namespace: "fixture" }));
       b.onLoad({ filter: /.*/, namespace: "fixture" }, () => ({ contents: "", loader: "js" }));
     } }] });
@@ -34,6 +37,8 @@ test("Launch authorization is consumed once across encodings, windows and server
     let adapter: any;
     const reset = () => {
       db = a.memoryBackend();
+      // A bound market deployment, as `convex run marketDeployment:bind` leaves it: every store write checks it.
+      void db.db.insert("marketDeployments", { ...a.marketDeployment(a.serverMarketChains().chains.gno), boundAt: 0 });
       let serial = Promise.resolve();
       // Convex mutations serialize conflicting writes; run the actual mutation in that same order here.
       adapter = { tx: (steps: unknown[]) => {
@@ -46,7 +51,7 @@ test("Launch authorization is consumed once across encodings, windows and server
     const authorization = async (options: { action?: LaunchAction; agent?: string; body?: string; signedAt?: number } = {}) => {
       const action = options.action ?? "withdraw", agent = options.agent ?? "fixture-agent", body = options.body ?? '{"amount":"1"}', signedAt = options.signedAt ?? now;
       const message = launchMessage({ action, owner: account.address, agent, signedAt, bodySha256: createHash("sha256").update(body).digest("hex") });
-      const signature = await account.signMessage({ message });
+      const signature = await account.sign(message, GNO.chainId);
       return { action, agent, body, signedAt, signature, message };
     };
     type Auth = Awaited<ReturnType<typeof authorization>>;
@@ -54,12 +59,12 @@ test("Launch authorization is consumed once across encodings, windows and server
     const read = (instance: typeof a, auth: Auth, signature = auth.signature, owner = account.address) => instance.readSigned(request(auth, signature, owner), auth.action, auth.agent);
     const status = (r: any) => r.ok ? 200 : r.res.status;
 
-    await t.test("same signature, hex case and normalized owner share one authorization", async () => {
+    await t.test("same signature, its re-encoding and normalized owner share one authorization", async () => {
       reset();const auth = await authorization();
       assert.equal(status(await read(a, auth)), 200);
       assert.equal(status(await read(a, auth)), 409);
-      assert.equal(status(await read(b, auth, `0x${auth.signature.slice(2).toUpperCase()}`)), 409);
-      assert.equal(status(await read(b, auth, auth.signature, account.address.toLowerCase() as typeof account.address)), 409);
+      assert.equal(status(await read(b, auth, auth.signature.replace(/":/g, "\": "))), 409);
+      assert.equal(status(await read(b, auth, auth.signature, account.address.toUpperCase().replace("G1", "g1"))), 409);
       const rows = await db.db.query("appStore").collect();
       assert.equal(rows.length, 1);
       assert.equal(rows[0].t, "launch_authorizations");
@@ -68,10 +73,10 @@ test("Launch authorization is consumed once across encodings, windows and server
       assert.equal(rows[0].d.expiresAt, rows[0].at);
       assert.ok(!JSON.stringify(rows).includes(auth.signature));
     });
-    await t.test("another valid recovery-byte representation cannot replay the message", async () => {
+    await t.test("another valid serialization of the same proof cannot replay the message", async () => {
       reset();const auth = await authorization();
-      const v = Number.parseInt(auth.signature.slice(-2), 16);
-      const alternative = `${auth.signature.slice(0, -2)}${(v >= 27 ? v - 27 : v + 27).toString(16).padStart(2, "0")}` as typeof auth.signature;
+      const p = JSON.parse(auth.signature);
+      const alternative = JSON.stringify({ signature: p.signature, signed: p.signed });
       assert.equal(await a.verifyOwnerSignature({ address: account.address, message: auth.message, signature: alternative }), true);
       assert.equal(status(await read(a, auth)), 200);
       assert.equal(status(await read(b, auth, alternative)), 409);

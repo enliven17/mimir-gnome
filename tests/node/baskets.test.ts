@@ -1,6 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
+import { GNO } from "../../lib/gno/config";
+import { testAccount } from "../helpers/gno-sign";
 
 import {
   validateBasket,
@@ -214,11 +216,11 @@ test("the follow message names the basket, the follower and the cap, exactly as 
   assert.match(message, /Nothing is deposited/);
 });
 
-test("a follow signature is EIP-191 over the message and binds the cap", async () => {
-  const acct = privateKeyToAccount(generatePrivateKey());
+test("a follow signature is an Adena proof over the message and binds the cap", async () => {
+  const acct = await testAccount();
   const follower = acct.address;
   const args = { basketId: "contrarian-mix", follower, perMarketCapUsdc: 5, signedAt: 1_800_000_000_000 };
-  const signature = await acct.signMessage({ message: followMessage(args) });
+  const signature = await acct.sign(followMessage(args), GNO.chainId);
   assert.ok(await verifyWalletSignature({ address: follower, message: followMessage(args), signature }));
   assert.equal(
     await verifyWalletSignature({ address: follower, message: followMessage({ ...args, perMarketCapUsdc: 50 }), signature }),

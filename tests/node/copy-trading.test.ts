@@ -1,6 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
+import { GNO } from "../../lib/gno/config";
+import { testAccount } from "../helpers/gno-sign";
 
 import {
   evaluateCopy,
@@ -247,13 +249,14 @@ test("the signed message spells out every bound and keeps the address exact", ()
   assert.match(copyPermissionMessage(permission()), /categories: any/);
 });
 
-test("grants and follower proofs verify as EIP-191 over the exact message", async () => {
-  const message = copyPermissionMessage(permission());
-  const signature = await FOLLOWER.signMessage({ message });
-  const address = FOLLOWER.address;
+test("grants and follower proofs verify as Adena proofs over the exact message", async () => {
+  const signer = await testAccount();
+  const address = signer.address;
+  const message = copyPermissionMessage(permission({ follower: address }));
+  const signature = await signer.sign(message, GNO.chainId);
   assert.equal(await verifyWalletSignature({ address, message, signature }), true);
   assert.equal(
-    await verifyWalletSignature({ address, message: copyPermissionMessage(permission({ maxDailyUsdc: 11 })), signature }),
+    await verifyWalletSignature({ address, message: copyPermissionMessage(permission({ follower: address, maxDailyUsdc: 11 })), signature }),
     false,
     "changing one bound breaks the signature",
   );
@@ -261,7 +264,7 @@ test("grants and follower proofs verify as EIP-191 over the exact message", asyn
   const revoke = followerProofMessage("revoke", address, NOW, "perm-1");
   assert.notEqual(list, revoke);
   assert.equal(
-    await verifyWalletSignature({ address, message: revoke, signature: await FOLLOWER.signMessage({ message: list }) }),
+    await verifyWalletSignature({ address, message: revoke, signature: await signer.sign(list, GNO.chainId) }),
     false,
     "a list proof cannot revoke",
   );
