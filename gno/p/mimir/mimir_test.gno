@@ -16,10 +16,10 @@ func TestHistoryBefore(t *testing.T) {
 	h.Record(300, Amounts{A: 7, B: 5})
 	uassert.Equal(t, 3, h.Len())
 
-	uassert.Equal(t, int64(7), h.Before(0).A)    // no cutoff: latest
-	uassert.Equal(t, int64(0), h.Before(100).A)  // strictly before 100: nothing
-	uassert.Equal(t, int64(2), h.Before(101).A)  // the coalesced checkpoint
-	uassert.Equal(t, int64(0), h.Before(200).B)  // 200 itself is excluded
+	uassert.Equal(t, int64(7), h.Before(0).A)   // no cutoff: latest
+	uassert.Equal(t, int64(0), h.Before(100).A) // strictly before 100: nothing
+	uassert.Equal(t, int64(2), h.Before(101).A) // the coalesced checkpoint
+	uassert.Equal(t, int64(0), h.Before(200).B) // 200 itself is excluded
 	uassert.Equal(t, int64(5), h.Before(250).B)
 	uassert.Equal(t, int64(7), h.Before(1000).A)
 }
