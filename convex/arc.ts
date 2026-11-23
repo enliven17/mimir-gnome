@@ -6,46 +6,23 @@ import type { Doc } from "./_generated/dataModel";
 import schema, { status, vChain } from "./schema";
 import { orderDecisions, retryDelayMs } from "../lib/oracle-queue";
 import { houseCreatorWallet } from "../lib/chains/house";
-import { pairWaits } from "../lib/chains/linked";
 import { serverMarketChains } from "../lib/chains/registry";
 
-// The market index of every chain (convex/arcSync.ts writes it). Every market is keyed (chain, kind, marketId); public
-// queries take `chain` optionally and default to "arc", so links and clients from before Base keep working.
+// The market index (convex/arcSync.ts writes it). Every market is keyed (chain, kind, marketId); the chain is gno.land,
+// and public queries take `chain` optionally.
 const kind = v.union(v.literal("vs"), v.literal("pool"));
-type Chain = "arc" | "base";
+type Chain = "gno";
 const chainArg = v.optional(vChain);
-/** A row without a chain is Arc's (written before Base). */
-const chainOf = (r: { chain?: Chain }): Chain => r.chain ?? "arc";
+const chainOf = (r: { chain?: Chain }): Chain => r.chain ?? "gno";
 
 export const cursor = internalQuery({
   args: { name: v.optional(v.string()) },
   handler: async (ctx, { name }) =>
     {
     await assertMarketDeployment(ctx);
-    return (await ctx.db.query("arcCursor").withIndex("by_name", (q) => q.eq("name", name ?? "arc")).unique())?.block ?? null;
+    return (await ctx.db.query("arcCursor").withIndex("by_name", (q) => q.eq("name", name ?? "gno")).unique())?.block ?? null;
   },
 });
-
-/** Record a link (lib/chains/linked.ts) for a market an agent just opened, and stamp the market row if indexed already. */
-export const link = internalMutation({
-  args: { pairKey: v.string(), chain: vChain, kind, marketId: v.number() },
-  handler: async (ctx, a) => {
-    await assertMarketDeployment(ctx);
-    const seen = await ctx.db.query("marketLinks").withIndex("by_market", (q) => q.eq("chain", a.chain).eq("kind", a.kind).eq("marketId", a.marketId)).unique();
-    if (!seen) await ctx.db.insert("marketLinks", { ...a, at: Date.now() });
-    const m = await ctx.db.query("arcMarkets").withIndex("by_market", (q) => q.eq("chain", a.chain).eq("kind", a.kind).eq("marketId", a.marketId)).unique();
-    if (m && m.pairKey !== a.pairKey) await ctx.db.patch(m._id, { pairKey: a.pairKey });
-  },
-});
-
-/** The same market on the other chains (its link siblings), public fields only. */
-async function siblingsOf(ctx: QueryCtx, m: Doc<"arcMarkets">) {
-  if (!m.pairKey) return [];
-  const rows = await ctx.db.query("arcMarkets").withIndex("by_pair", (q) => q.eq("pairKey", m.pairKey)).take(10);
-  return rows
-    .filter((r) => r._id !== m._id && !r.isPrivate)
-    .map((r) => ({ chain: chainOf(r), kind: r.kind, marketId: r.marketId, status: r.status, stakeA: r.stakeA, stakeB: r.stakeB, volumeUsd: r.volumeUsd, participants: r.participants, deadline: r.deadline, lockAt: r.lockAt }));
-}
 
 /** One indexed block range, all or nothing: snapshots, positions, events and the cursor move together. */
 export const apply = internalMutation({
@@ -81,8 +58,7 @@ export const apply = internalMutation({
         ? new Set((await ctx.db.query("arcPositions").withIndex("by_market", (q) => q.eq("chain", c).eq("kind", "pool").eq("marketId", m.marketId)).collect()).map((p) => p.user)).size
         : m.participants;
       // A link recorded when the agent opened it (arc.link) carries over; the snapshot itself never knows it.
-      const pairKey = row?.pairKey ?? (await ctx.db.query("marketLinks").withIndex("by_market", (q) => q.eq("chain", c).eq("kind", m.kind).eq("marketId", m.marketId)).unique())?.pairKey;
-      const next = { ...m, chain: c, participants, ...(pairKey ? { pairKey } : {}) };
+      const next = { ...m, chain: c, participants };
       if (row) await ctx.db.replace(row._id, next);
       else await ctx.db.insert("arcMarkets", next);
       if (!m.isPrivate && (!row || row.status !== m.status)) await ctx.db.insert("discoverySignals", { marketChain: c, marketKind: m.kind, marketId: m.marketId, category: m.category,
@@ -125,7 +101,7 @@ export const markets = query({
 
 export const market = query({
   args: { chain: chainArg, kind, marketId: v.number() },
-  handler: async (ctx, { chain: c = "arc", kind, marketId }) => {
+  handler: async (ctx, { chain: c = "gno", kind, marketId }) => {
     await assertMarketDeployment(ctx);
     const m = await ctx.db.query("arcMarkets").withIndex("by_market", (q) => q.eq("chain", c).eq("kind", kind).eq("marketId", marketId)).unique();
     if (!m) return null;
@@ -138,7 +114,7 @@ export const market = query({
     const verdict = await ctx.db.query("arcVerdicts").withIndex("by_market", (q) => q.eq("chain", c).eq("kind", kind).eq("marketId", marketId)).order("desc").first();
     // Fees this market paid, from its FeeAccrued events: entry fees and copy-trade fees, all on chain.
     const feesCollected = events.filter((e) => e.name === "FeeAccrued").reduce((sum, e) => sum + BigInt(e.amount ?? "0"), 0n).toString();
-    return { ...m, chain: c, positions, events, verdict, feesCollected, linked: await siblingsOf(ctx, m) };
+    return { ...m, chain: c, positions, events, verdict, feesCollected };
   },
 });
 
@@ -166,7 +142,7 @@ export const positionsOf = query({
 const POKE_GAP_MS = 5_000;
 export const poke = mutation({
   args: { chain: chainArg },
-  handler: async (ctx, { chain: c = "arc" }) => {
+  handler: async (ctx, { chain: c = "gno" }) => {
     await assertMarketDeployment(ctx);
     const now = Date.now();
     const name = `${c}-poke`;
@@ -218,18 +194,6 @@ export const oracleWork = internalQuery({
       if (m.refundAt <= now) continue;
       const t = await ctx.db.query("arcOracleTries").withIndex("by_market", (q) => q.eq("chain", c).eq("kind", m.kind).eq("marketId", m.marketId)).unique();
       if (t && t.notBefore > now * 1000) continue;
-      // A linked market shares its pair's backoff: while another leg's decision is deferred, this leg waits too, so
-      // the pair is decided once instead of once per chain. Once the pair has a decision, reusing it costs nothing.
-      if (m.pairKey) {
-        const decided = Boolean(await ctx.db.query("arcPairDecisions").withIndex("by_pair", (q) => q.eq("pairKey", m.pairKey!)).first());
-        const legs = decided ? [] : (await ctx.db.query("arcMarkets").withIndex("by_pair", (q) => q.eq("pairKey", m.pairKey)).take(10)).filter((r) => chainOf(r) !== c);
-        const retryAt: number[] = [];
-        for (const leg of legs) {
-          const lt = await ctx.db.query("arcOracleTries").withIndex("by_market", (q) => q.eq("chain", chainOf(leg)).eq("kind", leg.kind).eq("marketId", leg.marketId)).unique();
-          if (lt) retryAt.push(lt.notBefore);
-        }
-        if (pairWaits(retryAt, now * 1000, decided)) continue;
-      }
       ready.push(m);
     }
     const decide = orderDecisions(
@@ -311,61 +275,10 @@ export const saveVerdict = internalMutation({
   },
 });
 
-/**
- * Decisions already made for a link (lib/chains/linked.ts): the pair's stored decision first (stored: true), then the
- * verdicts proposed on its legs, oldest first. The oracle reuses one (siblingDecision).
- */
-export const linkedVerdicts = internalQuery({
-  args: { pairKey: v.string() },
-  handler: async (ctx, { pairKey }) => {
-    await assertMarketDeployment(ctx);
-    const stored = (await ctx.db.query("arcPairDecisions").withIndex("by_pair", (q) => q.eq("pairKey", pairKey)).take(5)).map((r) => ({
-      chain: r.chain, side: r.side, decided: r.side, confidence: r.confidence, summary: r.summary, evidenceHash: r.evidenceHash, bundle: r.bundle, stored: true as const,
-    }));
-    const proposed = (await ctx.db.query("arcVerdicts").withIndex("by_pair", (q) => q.eq("pairKey", pairKey)).take(20)).map((r) => ({
-      chain: chainOf(r), side: r.side, decided: r.decided, confidence: r.confidence, summary: r.summary, decidedSummary: r.decidedSummary, evidenceHash: r.evidenceHash, bundle: r.bundle,
-    }));
-    return [...stored, ...proposed];
-  },
-});
-
-/**
- * Store the pair's decision, right after the model decided and before any leg proposes it. The first one stands:
- * a concurrent second decision is dropped, and the caller proposes the stored one (returned) instead.
- */
-export const savePairDecision = internalMutation({
-  args: { pairKey: v.string(), chain: vChain, kind, marketId: v.number(), side: v.number(), confidence: v.number(), summary: v.string(), evidenceHash: v.string(), bundle: v.string() },
-  handler: async (ctx, d) => {
-    await assertMarketDeployment(ctx);
-    const prev = await ctx.db.query("arcPairDecisions").withIndex("by_pair", (q) => q.eq("pairKey", d.pairKey)).first();
-    if (prev) return { chain: prev.chain, side: prev.side, confidence: prev.confidence, summary: prev.summary, evidenceHash: prev.evidenceHash, bundle: prev.bundle, fresh: false };
-    await ctx.db.insert("arcPairDecisions", { ...d, at: Date.now() });
-    return { ...d, fresh: true };
-  },
-});
-
-/**
- * Whether any of `house` (lowercase operator addresses) opened or holds a position on ANY leg of a link: then the one
- * decision for the pair is held to the house bar (firm verdicts only, agents/oracle/decide.ts), whichever leg decides.
- */
-export const pairHouseHeld = internalQuery({
-  args: { pairKey: v.string(), house: v.array(v.string()) },
-  handler: async (ctx, { pairKey, house }) => {
-    await assertMarketDeployment(ctx);
-    const ours = new Set(house.map((a) => a.toLowerCase()));
-    for (const leg of await ctx.db.query("arcMarkets").withIndex("by_pair", (q) => q.eq("pairKey", pairKey)).take(10)) {
-      if (ours.has(leg.creator)) return true;
-      const legs = await ctx.db.query("arcPositions").withIndex("by_market", (q) => q.eq("chain", chainOf(leg)).eq("kind", leg.kind).eq("marketId", leg.marketId)).take(500);
-      if (legs.some((p) => ours.has(p.user))) return true;
-    }
-    return false;
-  },
-});
-
 /** The oracle's audit bundle for a market: what anyone can hash to check the on-chain evidenceHash. */
 export const verdict = query({
   args: { chain: chainArg, kind, marketId: v.number() },
-  handler: async (ctx, { chain: c = "arc", kind, marketId }) =>
+  handler: async (ctx, { chain: c = "gno", kind, marketId }) =>
     {
     await assertMarketDeployment(ctx);
     return (await ctx.db.query("arcVerdicts").withIndex("by_market", (q) => q.eq("chain", c).eq("kind", kind).eq("marketId", marketId)).order("desc").first()) ?? null;
@@ -374,7 +287,7 @@ export const verdict = query({
 
 export const marketWithPositions = internalQuery({
   args: { chain: chainArg, kind, marketId: v.number() },
-  handler: async (ctx, { chain: c = "arc", kind, marketId }) => {
+  handler: async (ctx, { chain: c = "gno", kind, marketId }) => {
     await assertMarketDeployment(ctx);
     const m = await ctx.db.query("arcMarkets").withIndex("by_market", (q) => q.eq("chain", c).eq("kind", kind).eq("marketId", marketId)).unique();
     if (!m) return null;
@@ -389,7 +302,7 @@ export const marketWithPositions = internalQuery({
 const STAKE_EVENTS = ["ClaimCreated", "ClaimChallenged", "MarketCreated", "Staked"] as const;
 export const stakeTimes = internalQuery({
   args: { chain: chainArg, kind, marketId: v.number() },
-  handler: async (ctx, { chain: c = "arc", kind, marketId }) =>
+  handler: async (ctx, { chain: c = "gno", kind, marketId }) =>
     {
     await assertMarketDeployment(ctx);
     const latest = await Promise.all(STAKE_EVENTS.map(async name => {
