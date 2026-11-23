@@ -1,14 +1,10 @@
 "use client";
 
-/** An agent's token and wallets, as labelled cards: the full address, a copy button and where to look it up. */
+/** An agent's gno.land wallet, as a labelled card: the full address, a copy button and where to look it up. */
 import { useState } from "react";
 
 import { ExternalMark } from "@/components/ExternalMark";
-import { arcExplorerUrl } from "@/lib/arc/config";
 import { explorerUrl, MARKET_CHAINS } from "@/lib/chains/registry";
-import { argusToken, clankerToken, type AgentToken } from "@/lib/launch/council-view";
-
-type Row = { label: string; note: string; address: string; href: string; site: string; tone: string };
 
 function CopyButton({ text }: { text: string }) {
   const [done, setDone] = useState(false);
@@ -29,32 +25,25 @@ function CopyButton({ text }: { text: string }) {
   );
 }
 
-export default function WalletsBlock({ ticker, token, arc, base = null }: { ticker: string; token: Pick<AgentToken, "chain" | "address"> | null; arc: string | null; base?: string | null }) {
-  const rows: Row[] = [
-    token?.chain === "arc" && MARKET_CHAINS.chains.arc.enabled ? { label: `$${ticker} token`, note: "Its token on Argus (Arc)", address: token.address, href: argusToken(token.address), site: "Argus", tone: "bg-[#a78bfa]" } : null,
-    token?.chain === "base" ? { label: `$${ticker} token`, note: "Its token on Clanker (Base)", address: token.address, href: clankerToken(token.address), site: "Clanker", tone: "bg-[#86efac]" } : null,
-    arc && MARKET_CHAINS.chains.arc.enabled ? { label: "Arc wallet", note: "Stakes USDC on Mimir markets and pays its own gas", address: arc, href: arcExplorerUrl("address", arc), site: "Arc explorer", tone: "bg-coral" } : null,
-    base ? { label: "Base wallet", note: "Stakes USDC on Base markets; needs a little ETH for gas", address: base, href: explorerUrl(MARKET_CHAINS.chains.base, "address", base), site: "BaseScan", tone: "bg-[#0052ff]" } : null,
-  ].filter((r): r is Row => r !== null);
-  if (!rows.length) return null;
+export default function WalletsBlock({ wallet }: { ticker?: string; wallet: string | null }) {
+  if (!wallet) return null;
+  const chain = MARKET_CHAINS.chains.gno;
   return (
-    <section aria-label="Token and wallets" className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-      {rows.map((r) => (
-        <div key={r.label} className="grid content-start gap-2.5 rounded-2xl bg-[rgb(27_19_20/.93)] p-4 shadow-[inset_0_0_0_1px_rgb(243_234_214/.07)]">
-          <div className="flex items-center gap-2">
-            <span className={`h-2 w-2 shrink-0 rounded-full ${r.tone}`} aria-hidden />
-            <span className="text-[14px] text-cream">{r.label}</span>
-          </div>
-          <p className="m-0 text-[12px] text-muted">{r.note}</p>
-          <p className="m-0 break-all rounded-xl bg-ink-deep px-3 py-2 font-mono text-[12px] leading-relaxed text-cream">{r.address}</p>
-          <div className="flex items-center justify-between gap-2">
-            <a href={r.href} target="_blank" rel="noreferrer" className="text-[13px] text-coral hover:underline">
-              Open on {r.site} <ExternalMark />
-            </a>
-            <CopyButton text={r.address} />
-          </div>
+    <section aria-label="Wallet" className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+      <div className="grid content-start gap-2.5 rounded-2xl bg-[rgb(27_19_20/.93)] p-4 shadow-[inset_0_0_0_1px_rgb(243_234_214/.07)]">
+        <div className="flex items-center gap-2">
+          <span className="h-2 w-2 shrink-0 rounded-full bg-coral" aria-hidden />
+          <span className="text-[14px] text-cream">{chain.label} wallet</span>
         </div>
-      ))}
+        <p className="m-0 text-[12px] text-muted">Stakes {chain.token.symbol} on Mimir markets; needs a little {chain.gas.symbol} for gas</p>
+        <p className="m-0 break-all rounded-xl bg-ink-deep px-3 py-2 font-mono text-[12px] leading-relaxed text-cream">{wallet}</p>
+        <div className="flex items-center justify-between gap-2">
+          <a href={explorerUrl(chain, "address", wallet)} target="_blank" rel="noreferrer" className="text-[13px] text-coral hover:underline">
+            Open on {chain.explorerName} <ExternalMark />
+          </a>
+          <CopyButton text={wallet} />
+        </div>
+      </div>
     </section>
   );
 }

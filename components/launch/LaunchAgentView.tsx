@@ -24,7 +24,7 @@ import FollowButton from "@/components/discovery/FollowButton";
 import PublicMarketRecord from "./PublicMarketRecord";
 
 type Council = CouncilAgent & { displayName: string; bio: string };
-type Bet = { chain?: "arc" | "base"; kind: "vs" | "pool"; marketId: number; label: string; question: string; usdc: number; outcome: "open" | "won" | "lost" | "refunded"; pnl: number };
+type Bet = { chain?: "gno"; kind: "vs" | "pool"; marketId: number; label: string; question: string; usdc: number; outcome: "open" | "won" | "lost" | "refunded"; pnl: number };
 type Detail = {
   agent: null | { events: { at: number; kind: string; text: string; chain: string | null; tx: string | null }[] };
   arc: Bet[];
@@ -41,6 +41,8 @@ export default function LaunchAgentView({ slug, council }: { slug: string; counc
   const a = council
     ? { name: council.displayName, ticker: council.ticker, seed: slug, about: council.bio, token: council.token, arc: council.arc, base: council.base?.address ?? null, house: true }
     : { name: card!.name, ticker: card!.ticker, seed: card!.avatarSeed, about: card!.thesis, token: card!.token, arc: card!.arc, base: card!.base, house: false };
+  // The agent's gno.land wallet: the backend still reports it in its legacy per-chain fields.
+  const wallet = [a.base, a.arc].find((w): w is string => typeof w === "string" && w.startsWith("g1")) ?? null;
 
   return (
     <div className="grid grid-cols-[minmax(0,1fr)] gap-6 sm:gap-8">
@@ -60,10 +62,10 @@ export default function LaunchAgentView({ slug, council }: { slug: string; counc
       </header>
 
       <FollowButton target={`agent:${slug}`} label="Follow agent forecasts" />
-      <PublicMarketRecord address={a.base ?? a.arc} />
-      <WalletsBlock ticker={a.ticker} token={a.token} arc={a.arc} base={a.base} />
-      <TokenBlock slug={slug} ticker={a.ticker} owner={card?.owner ?? null} status={card?.status ?? "live"} token={a.token} />
-      {!a.house && card ? <OwnerControls slug={slug} owner={card.owner} status={card.status} arc={card.arc} base={card.base} /> : null}
+      <PublicMarketRecord address={wallet} />
+      <WalletsBlock ticker={a.ticker} wallet={wallet} />
+      <TokenBlock slug={slug} ticker={a.ticker} owner={card?.owner ?? null} status={card?.status ?? "live"} />
+      {!a.house && card ? <OwnerControls slug={slug} owner={card.owner} status={card.status} wallet={wallet} /> : null}
       <CopyPanel slug={slug} ticker={a.ticker} />
       <RecordSection slug={slug} />
     </div>
@@ -108,8 +110,8 @@ function RecordSection({ slug }: { slug: string }) {
       <Strip label={t("recordTitle")} className="overflow-hidden rounded-2xl">
         <StripCell label={t("arcStakes")} value={bets.length} />
         <StripCell label={t("winRate")} value={won + lost ? `${Math.round((won / (won + lost)) * 100)}%` : "-"} />
-        <StripCell label={t("arcPnl")} value={`${usd(bets.reduce((x, b) => x + b.pnl, 0))} USDC`} />
-        <StripCell label={t("atRisk")} value={`${bets.filter((b) => b.outcome === "open").reduce((x, b) => x + b.usdc, 0).toFixed(2)} USDC`} />
+        <StripCell label={t("arcPnl")} value={`${usd(bets.reduce((x, b) => x + b.pnl, 0))} mUSD`} />
+        <StripCell label={t("atRisk")} value={`${bets.filter((b) => b.outcome === "open").reduce((x, b) => x + b.usdc, 0).toFixed(2)} mUSD`} />
       </Strip>
 
       <div className="grid gap-5">
@@ -118,7 +120,7 @@ function RecordSection({ slug }: { slug: string }) {
           {bets.length ? (
             <ul className="m-0 grid list-none gap-1.5 p-0 text-[13px]">
               {bets.slice(0, 15).map((b) => (
-                <li key={`${b.chain ?? "arc"}-${b.kind}-${b.marketId}-${b.label}`} className="flex items-baseline justify-between gap-3">
+                <li key={`${b.chain ?? "gno"}-${b.kind}-${b.marketId}-${b.label}`} className="flex items-baseline justify-between gap-3">
                   <Link href={marketPath(b.chain, b.kind, b.marketId)} className="min-w-0 truncate text-muted hover:text-coral">
                     <span className="text-cream">{b.label}</span> · {b.question}
                   </Link>

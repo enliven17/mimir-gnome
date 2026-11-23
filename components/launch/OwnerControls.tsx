@@ -1,35 +1,27 @@
 "use client";
 
 /**
- * The owner's controls on an agent's page: fund its wallet on a chain from the connected wallet (Arc: USDC, which also
- * pays its gas; Base: USDC, plus a little ETH for gas: there is no gas station), withdraw it back, pause or resume,
- * shut down.
+ * The owner's controls on an agent's page: fund its gno.land wallet with mUSD from the connected Adena account (one
+ * Transfer on r/musd), withdraw it back, pause or resume, shut down. Gas is GNOT: send it a little from Adena directly.
  */
 import { useState } from "react";
-import { encodeFunctionData, numberToHex, type Address } from "viem";
 
-import { sendEvmTransaction } from "@/components/arc/useEvmWallet";
+import { sendWithWallet } from "@/components/wallet/useAdenaWallet";
 import { useMimirWallet } from "@/hooks/useMimirWallet";
-import { toChainUnits } from "@/lib/chains/amounts";
-import { ERC20_ABI } from "@/lib/chains/client";
-import { MARKET_CHAINS, type MarketChainId } from "@/lib/chains/registry";
+import { usdToIndex } from "@/lib/chains/amounts";
+import { explorerUrl, MARKET_CHAINS } from "@/lib/chains/registry";
+import { transferMessage } from "@/lib/gno/msgs";
 import { signedPost } from "@/lib/launch/client";
 
-/** USDC in index units (18 dp), whole micro-USDC. */
-const usdcWei = (n: number) => BigInt(Math.round(n * 1e6)) * 1_000_000_000_000n;
-
-export default function OwnerControls({ slug, owner, status, arc, base = null }: { slug: string; owner: string; status: string; arc: string | null; base?: string | null }) {
+export default function OwnerControls({ slug, owner, status, wallet }: { slug: string; owner: string; status: string; wallet: string | null }) {
   const { address, signMessage } = useMimirWallet();
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState<string | null>(null);
   const [fund, setFund] = useState("");
   const [amount, setAmount] = useState("");
-  const [gas, setGas] = useState("");
-  const chains = MARKET_CHAINS.enabled.filter((c) => (c === "arc" ? Boolean(arc) : Boolean(base)));
-  const [chain, setChain] = useState<MarketChainId>(chains[0] ?? MARKET_CHAINS.defaultChain);
-  if (!address || address !== owner || !signMessage) return null;
-  const cfg = MARKET_CHAINS.chains[chain];
-  const target = (chain === "arc" ? arc : base) as Address | null;
+  if (!address || address !== owner.toLowerCase() || !signMessage) return null;
+  const cfg = MARKET_CHAINS.chains.gno;
+  const token = cfg.token.symbol;
 
   const act = async (fn: () => Promise<string>) => {
     setBusy(true);
@@ -42,34 +34,12 @@ export default function OwnerControls({ slug, owner, status, arc, base = null }:
       setBusy(false);
     }
   };
-  /** USDC to the agent's wallet on `chain`: native value on Arc, an ERC-20 transfer on Base. */
-  const sendUsdc = (n: number) => {
-    if (!target) throw new Error(`The agent has no ${cfg.label} wallet yet.`);
-    const wei = usdcWei(n);
-    return cfg.usdc.kind === "native"
-      ? sendEvmTransaction(cfg.chainId, { from: address, to: target, value: numberToHex(wei) })
-      : sendEvmTransaction(cfg.chainId, {
-          from: address,
-          to: cfg.usdc.address,
-          data: encodeFunctionData({ abi: ERC20_ABI, functionName: "transfer", args: [target, toChainUnits(cfg, wei)] }),
-          value: "0x0",
-        });
-  };
   const post = <T,>(path: string, action: "status" | "withdraw", body: unknown) => signedPost<T>(`/api/launch/${slug}/${path}`, { owner, signMessage, action, agent: slug, body });
-  const setStatus = (s: "live" | "paused" | "killed") => act(async () => (await post("status", "status", { status: s }), s === "killed" ? "Shut down: it stakes no more. Withdraw its USDC any time." : s === "paused" ? "Paused." : "Running again."));
+  const setStatus = (s: "live" | "paused" | "killed") => act(async () => (await post("status", "status", { status: s }), s === "killed" ? `Shut down: it stakes no more. Withdraw its ${token} any time.` : s === "paused" ? "Paused." : "Running again."));
 
   return (
     <section className="grid gap-4 rounded-2xl bg-cream/[0.04] p-5">
       <h2 className="m-0 font-display text-[1.4rem] text-cream">Your agent</h2>
-      {chains.length > 1 ? (
-        <div aria-label="Network" className="flex gap-1 text-[13px]">
-          {chains.map((c) => (
-            <button key={c} type="button" aria-pressed={chain === c} onClick={() => setChain(c)} className={`rounded-full px-3 py-1 ${chain === c ? "bg-panel-raised text-cream" : "text-muted"}`}>
-              {MARKET_CHAINS.chains[c].label}
-            </button>
-          ))}
-        </div>
-      ) : null}
       {status !== "killed" ? (
         <form
           className="flex flex-wrap items-end gap-3"
@@ -78,38 +48,18 @@ export default function OwnerControls({ slug, owner, status, arc, base = null }:
             const n = Number(fund);
             if (!(n > 0)) return setNote("Enter an amount.");
             void act(async () => {
-              const tx = await sendUsdc(n);
+              if (!wallet) throw new Error("The agent has no gno.land wallet yet.");
+              const r = await sendWithWallet([transferMessage(address, wallet, usdToIndex(n), cfg.gno)]);
               setFund("");
-              return `Sent ${n} USDC to its ${cfg.label} wallet (${tx.slice(0, 10)}…). It stakes from it.`;
+              return `Sent ${n} ${token} to its wallet (${r.txHash.slice(0, 10)}…). It stakes from it.`;
             });
           }}
         >
           <label className="grid gap-1.5">
-            <span className="text-[13px] text-muted">Fund it (USDC on {cfg.label})</span>
-            <input className="input !w-32 font-mono" inputMode="decimal" placeholder="0.00" value={fund} onChange={(e) => setFund(e.target.value)} aria-label="USDC to send" />
+            <span className="text-[13px] text-muted">Fund it ({token} on {cfg.label})</span>
+            <input className="input !w-32 font-mono" inputMode="decimal" placeholder="0.00" value={fund} onChange={(e) => setFund(e.target.value)} aria-label={`${token} to send`} />
           </label>
-          <button type="submit" disabled={busy} className="btn-primary !w-auto !px-5">Send USDC</button>
-        </form>
-      ) : null}
-      {status !== "killed" && cfg.gas.symbol === "ETH" && target ? (
-        <form
-          className="flex flex-wrap items-end gap-3"
-          onSubmit={(e) => {
-            e.preventDefault();
-            const n = Number(gas);
-            if (!(n > 0 && n <= 1)) return setNote("Enter an ETH amount (a little covers many stakes).");
-            void act(async () => {
-              const tx = await sendEvmTransaction(cfg.chainId, { from: address, to: target, value: numberToHex(BigInt(Math.round(n * 1e9)) * 1_000_000_000n) });
-              setGas("");
-              return `Sent ${n} ETH for gas to its ${cfg.label} wallet (${tx.slice(0, 10)}…).`;
-            });
-          }}
-        >
-          <label className="grid gap-1.5">
-            <span className="text-[13px] text-muted">Gas (ETH on {cfg.label})</span>
-            <input className="input !w-32 font-mono" inputMode="decimal" placeholder="0.001" value={gas} onChange={(e) => setGas(e.target.value)} aria-label="ETH to send for gas" />
-          </label>
-          <button type="submit" disabled={busy} className="btn-ghost !w-auto !px-5">Send ETH</button>
+          <button type="submit" disabled={busy} className="btn-primary !w-auto !px-5">Send {token}</button>
         </form>
       ) : null}
       <form
@@ -119,20 +69,24 @@ export default function OwnerControls({ slug, owner, status, arc, base = null }:
           const n = Number(amount);
           if (!(n > 0)) return setNote("Enter an amount.");
           void act(async () => {
-            const r = await post<{ tx: string }>("withdraw", "withdraw", { amount: n, chain });
+            const r = await post<{ tx: string }>("withdraw", "withdraw", { amount: n, chain: cfg.id });
             setAmount("");
             return `Sent to you (${r.tx.slice(0, 10)}…).`;
           });
         }}
       >
         <label className="grid gap-1.5">
-          <span className="text-[13px] text-muted">Withdraw (USDC on {cfg.label})</span>
-          <input className="input !w-32 font-mono" inputMode="decimal" placeholder="0.00" value={amount} onChange={(e) => setAmount(e.target.value)} aria-label="USDC to withdraw" />
+          <span className="text-[13px] text-muted">Withdraw ({token} on {cfg.label})</span>
+          <input className="input !w-32 font-mono" inputMode="decimal" placeholder="0.00" value={amount} onChange={(e) => setAmount(e.target.value)} aria-label={`${token} to withdraw`} />
         </label>
         <button type="submit" disabled={busy} className="btn-ghost !w-auto !px-5">Withdraw</button>
       </form>
       <p className="m-0 text-[12px] text-muted">
-        {cfg.gas.symbol === "ETH" ? "Withdrawals go to this wallet. Its gas on Base is ETH, which stays in its wallet." : "Withdrawals go to this wallet. 0.05 USDC stays for its gas."}
+        Withdrawals go to this wallet. Its gas is {cfg.gas.symbol}: send it a little from Adena{wallet ? (
+          <>
+            {" "}(<a href={explorerUrl(cfg, "address", wallet)} target="_blank" rel="noreferrer" className="text-coral hover:underline">its wallet</a>)
+          </>
+        ) : null}.
       </p>
       {status !== "killed" ? (
         <div className="flex flex-wrap gap-3">
@@ -146,7 +100,7 @@ export default function OwnerControls({ slug, owner, status, arc, base = null }:
             disabled={busy}
             className="text-[14px] text-coral hover:underline"
             onClick={() => {
-              if (window.confirm("Shut it down for good? It stops staking. Open stakes settle on their own, and you can withdraw its USDC any time.")) void setStatus("killed");
+              if (window.confirm(`Shut it down for good? It stops staking. Open stakes settle on their own, and you can withdraw its ${token} any time.`)) void setStatus("killed");
             }}
           >
             Shut down

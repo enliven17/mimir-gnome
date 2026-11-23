@@ -4,7 +4,7 @@
  */
 import { LAUNCH_HEADERS, launchMessage, type LaunchAction } from "./auth";
 
-/** EIP-191 personal_sign with the connected EVM wallet (useMimirWallet().signMessage): the 0x signature. */
+/** Adena SignArbitrary with the connected account (useMimirWallet().signMessage): the JSON proof lib/owner.ts verifies. */
 export type SignMessage = (message: string) => Promise<string>;
 
 async function sha256Hex(text: string): Promise<string> {

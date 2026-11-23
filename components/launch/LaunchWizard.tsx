@@ -2,8 +2,8 @@
 
 /**
  * /launch/new: create a hosted agent. Free: four steps (who it is, its brain, how it stakes on Mimir markets, a
- * check), then one signature. The server makes its Arc wallet and it is live at once; it stakes once its owner sends
- * it USDC from its page. Its own token is optional and launched later from the agent's page, from the owner's wallet.
+ * check), then one signature. The server makes its gno.land wallet and it is live at once; it stakes once its owner
+ * sends it mUSD from its page.
  */
 import { useState } from "react";
 
@@ -76,7 +76,7 @@ export default function LaunchWizard() {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [created, setCreated] = useState<{ id: string; arc: string | null; base: string | null } | null>(null);
-  // The connected EVM wallet owns the agent (lib/launch/auth.ts).
+  // The connected Adena account owns the agent (lib/launch/auth.ts).
   const { address: owner0, signMessage } = useMimirWallet();
   const { open } = useWalletSheet();
   const seed = encodeAvatarSeed(faceBase(f), f.avatar);
@@ -102,7 +102,7 @@ export default function LaunchWizard() {
     setError(null);
     try {
       const r = await signedPost<{ id: string; arc: string | null; base: string | null }>("/api/launch", { owner: owner0, signMessage, action: "create", agent: "new", body: body() });
-      trackProductEvent("live_agent_created", { mode: "live", chain: r.base ? "base" : "arc" });
+      trackProductEvent("live_agent_created", { mode: "live", chain: "gno" });
       setCreated(r);
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Could not create the agent.";
@@ -122,9 +122,8 @@ export default function LaunchWizard() {
             <p className="m-0 mt-1 font-mono text-[13px] text-coral">${f.ticker}</p>
           </div>
         </div>
-        <p className="m-0 text-[14px] text-cream">{f.name} is live. Send it USDC{created.base ? " and a little ETH for gas on Base" : " on Arc"} from its page and it starts staking. You can withdraw any time.</p>
-        <p className="m-0 break-all rounded-xl bg-ink-deep px-3 py-2 font-mono text-[12px] text-muted">{created.arc}</p>
-        <p className="m-0 text-[13px] text-muted">Want a token for it? Launch one on Argus or Clanker from its page: your wallet launches it and every creator fee is yours.</p>
+        <p className="m-0 text-[14px] text-cream">{f.name} is live. Send it mUSD and a little GNOT for gas from its page and it starts staking. You can withdraw any time.</p>
+        <p className="m-0 break-all rounded-xl bg-ink-deep px-3 py-2 font-mono text-[12px] text-muted">{created.base ?? created.arc}</p>
         <Link href={`/launch/${created.id}`} className="btn-primary justify-self-start !w-auto !px-5">
           Open its page
         </Link>
@@ -250,15 +249,15 @@ export default function LaunchWizard() {
             <legend className="mb-1 font-display text-[1.5rem] text-cream">Mimir markets</legend>
             <label className="flex items-center justify-between gap-4 rounded-xl bg-cream/[0.04] px-4 py-3">
               <span className="grid gap-0.5">
-                <span className="text-[14px] text-cream">Stake from its Arc wallet</span>
-                <span className="text-[12px] text-muted">Fund it with USDC on its page once it exists.</span>
+                <span className="text-[14px] text-cream">Stake from its gno.land wallet</span>
+                <span className="text-[12px] text-muted">Fund it with mUSD on its page once it exists.</span>
               </span>
               <input type="checkbox" role="switch" className="switch" checked={f.markets.enabled} onChange={(e) => setM({ enabled: e.target.checked })} />
             </label>
             {f.markets.enabled ? (
               <>
                 <p className="m-0 text-[13px] text-muted">
-                  Defaults: edge ≥ {f.markets.minEdge} pts · up to {f.markets.maxStakeUsdc} USDC each · {f.markets.budgetUsdc} USDC at once
+                  Defaults: edge ≥ {f.markets.minEdge} pts · up to {f.markets.maxStakeUsdc} mUSD each · {f.markets.budgetUsdc} mUSD at once
                   {f.markets.categories.length ? ` · ${f.markets.categories.length} categories` : " · all categories"}.
                 </p>
                 <Disclosure summary="Fine-tune markets" defaultOpen={Boolean(error)}>
@@ -280,8 +279,8 @@ export default function LaunchWizard() {
                     <div className="grid gap-5 sm:grid-cols-2">
                       <Range label="Smallest edge" value={f.markets.minEdge} min={3} max={30} unit=" pts" onChange={(v) => setM({ minEdge: v })} hint="Its odds must beat the pool's by this much." />
                       <Range label="Kelly fraction" value={f.markets.kellyFraction} min={5} max={100} step={5} unit="%" onChange={(v) => setM({ kellyFraction: v })} hint="Of the log-optimal stake. Lower is calmer." />
-                      <Range label="Most per market" value={f.markets.maxStakeUsdc} min={0.5} max={50} step={0.5} unit=" USDC" onChange={(v) => setM({ maxStakeUsdc: v })} />
-                      <Range label="Most staked at once" value={f.markets.budgetUsdc} min={1} max={500} unit=" USDC" onChange={(v) => setM({ budgetUsdc: v })} />
+                      <Range label="Most per market" value={f.markets.maxStakeUsdc} min={0.5} max={50} step={0.5} unit=" mUSD" onChange={(v) => setM({ maxStakeUsdc: v })} />
+                      <Range label="Most staked at once" value={f.markets.budgetUsdc} min={1} max={500} unit=" mUSD" onChange={(v) => setM({ budgetUsdc: v })} />
                     </div>
                   </div>
                 </Disclosure>
@@ -317,11 +316,11 @@ export default function LaunchWizard() {
               <dd>{f.brain === "mimir" ? "Mimir AI" : `${BYOK_PROVIDERS[f.brain].label} (your key)`}</dd>
               <dt>Markets</dt>
               <dd>
-                {f.markets.enabled ? `edge ≥ ${f.markets.minEdge} pts · ≤ ${f.markets.maxStakeUsdc} USDC · budget ${f.markets.budgetUsdc}` : "off"}
+                {f.markets.enabled ? `edge ≥ ${f.markets.minEdge} pts · ≤ ${f.markets.maxStakeUsdc} mUSD · budget ${f.markets.budgetUsdc}` : "off"}
                 {f.markets.opens ? ` · opens ≤ ${f.markets.opensPerDay}/day` : ""}
               </dd>
               <dt>Cost</dt>
-              <dd>Free. It stakes the USDC you send it on Arc.</dd>
+              <dd>Free. It stakes the mUSD you send it on gno.land.</dd>
             </dl>
             <p className="m-0 text-[12px] text-muted">One signature from your wallet, no transaction. Pause, withdraw or shut it down any time from its page.</p>
           </div>

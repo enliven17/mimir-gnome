@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { gnoConfig } from "../../lib/gno/config";
-import { actionMessages, agentPayMessages, DISPUTE_BOND_WEI, fromMusdUnits, toMusdUnits, type MarketAction } from "../../lib/gno/msgs";
+import { actionMessages, agentPayMessages, DISPUTE_BOND_WEI, fromMusdUnits, toMusdUnits, transferMessage, type MarketAction } from "../../lib/gno/msgs";
 import { qevalValues, unquoteGo } from "../../lib/gno/rpc";
 
 const cfg = gnoConfig(() => undefined);
@@ -52,4 +52,12 @@ test("qeval output parses, including Go string escapes", () => {
   const [s, n] = qevalValues(out);
   assert.equal(unquoteGo(s.value), 'a"bA');
   assert.deepEqual(n, { value: "42", type: "int64" });
+});
+
+test("an mUSD transfer sends whole mUSD units to the recipient and refuses zero or dust", () => {
+  const m = transferMessage(me, "g1jg8mtutu9khhfwc4nxmuhcpftf0pajdhfvsqf5", usd(2.5), cfg);
+  assert.equal(m.value.pkg_path, cfg.realms.musd);
+  assert.deepEqual([m.value.func, ...m.value.args], ["Transfer", "g1jg8mtutu9khhfwc4nxmuhcpftf0pajdhfvsqf5", "2500000"]);
+  assert.throws(() => transferMessage(me, me, 0n, cfg), /Invalid amount/);
+  assert.throws(() => transferMessage(me, me, 1n, cfg), /precision/);
 });

@@ -8,8 +8,8 @@
  * authorizes the record, and the API key is shown exactly once. Every value
  * that goes into a signature is on screen before the wallet prompt opens
  * (the last step recaps them), so a signer is never asked to approve text
- * they have not read. Signatures are EIP-191 personal_sign from the connected
- * EVM wallet (lib/owner.ts).
+ * they have not read. Signatures are Adena SignArbitrary proofs from the
+ * connected gno.land account (lib/owner.ts).
  *
  * The connected wallet plays every role here for convenience. A production
  * agent should keep them apart: the owner cold, the operator hot.
@@ -26,11 +26,13 @@ import { Sheet } from "@/components/ui/Card";
 import Progress from "@/components/ui/Progress";
 import ConnectWalletButton from "@/components/wallet/ConnectWalletButton";
 import { useArcAccount } from "@/components/arc/arena/useArcAccount";
-import { arcPublicClient } from "@/lib/arc/chain";
-import { ARC } from "@/lib/arc/config";
+import { sendWithWallet } from "@/components/wallet/useAdenaWallet";
+import { usdToIndex } from "@/lib/chains/amounts";
+import { isGnoAddress } from "@/lib/gno/config";
+import { transferMessage } from "@/lib/gno/msgs";
+import { poolConfig } from "@/lib/gno/reads";
 import { AGENT_DEPLOY_USD } from "@/lib/arc/fees";
 import { arcArenaEnabled } from "@/components/arc/arena/enabled";
-import { isAddress, parseAbi } from "viem";
 import { Link } from "@/i18n/navigation";
 import {
   agentRequestMessage,
@@ -91,12 +93,11 @@ export default function AgentRegisterClient() {
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<Registered | null>(null);
   const [copied, setCopied] = useState(false);
-  // On Arc: the EVM address the agent signs with, and the deploy fee paid from the connected wallet.
-  // The deploy fee is paid on Arc (native USDC): this account stays on Arc.
-  const arc = useArcAccount("arc");
-  // The deploy fee is paid on Arc while Arc is configured (the API verifies it there).
-  const onArc = arcArenaEnabled && MARKET_CHAINS.chains.arc.enabled;
-  const [arcOperator, setArcOperator] = useState("");
+  // On gno.land: the address the agent signs its transactions with, and the deploy fee paid in mUSD from Adena.
+  const account = useArcAccount("gno");
+  const chain = MARKET_CHAINS.chains.gno;
+  const onChain = arcArenaEnabled && chain.enabled;
+  const [operator, setOperator] = useState("");
   const [paymentTx, setPaymentTx] = useState<string | null>(null);
   const deployUsd = AGENT_DEPLOY_USD;
   const headingRef = useRef<HTMLHeadingElement>(null);
@@ -171,22 +172,21 @@ export default function AgentRegisterClient() {
       // 1. Operator proof: this wallet controls itself.
       const operatorSignature = await sign(operatorProofMessage(agentId, wallet));
 
-      // On Arc: pay the deploy fee first (a native USDC transfer from the wallet to the fee recipient), once;
+      // Pay the deploy fee first (an mUSD transfer from Adena to the realms' fee recipient), once;
       // a retry after a failed registration reuses the same payment.
       let paid = paymentTx;
-      if (onArc && deployUsd > 0 && !paid) {
-        if (!arc.session) throw new Error("Connect your wallet first: the deploy fee is paid from it.");
-        const v3 = ARC.contracts.mimirV3!;
-        const treasury = await arcPublicClient().readContract({ address: v3, abi: parseAbi(["function feeRecipient() view returns (address)"]), functionName: "feeRecipient" });
-        const wei = BigInt(Math.round(deployUsd * 1e6)) * 1_000_000_000_000n;
-        const receipt = await arc.session.sendCalls([{ to: treasury, data: "0x", value: wei }]);
+      if (onChain && deployUsd > 0 && !paid) {
+        if (!account.session) throw new Error("Connect your wallet first: the deploy fee is paid from it.");
+        const treasury = (await poolConfig(chain.gno)).feeRecipient;
+        if (!isGnoAddress(treasury)) throw new Error("The fee recipient could not be read. Try again in a moment.");
+        const receipt = await sendWithWallet([transferMessage(wallet, treasury, usdToIndex(deployUsd), chain.gno)]);
         paid = receipt.txHash;
         setPaymentTx(paid);
       }
 
       // 2. Owner envelope: this wallet authorizes the record.
       const reg = envelope("register", {
-        ...(arcArenaEnabled && isAddress(arcOperator.trim()) ? { arcOperator: arcOperator.trim() } : {}),
+        ...(arcArenaEnabled && isGnoAddress(operator.trim()) ? { gnoOperator: operator.trim().toLowerCase() } : {}),
         ...(paid ? { paymentTx: paid } : {}),
         ownerWallet: wallet,
         operatorWallet: wallet,
@@ -364,24 +364,24 @@ export default function AgentRegisterClient() {
           <dt>{t("capabilities")}</dt>
           <dd>{effectiveCapabilities.length ? effectiveCapabilities.join(", ") : "-"}</dd>
         </dl>
-        {onArc ? (
+        {onChain ? (
           <div className="grid gap-3 rounded-xl bg-cream/[0.035] px-4 py-3">
             <label className="grid gap-1.5 text-[13px] text-muted">
-              Arc operator (optional now, settable later with setArcOperator)
+              gno.land operator (optional now, settable later)
               <input
-                value={arcOperator}
-                onChange={(e) => setArcOperator(e.target.value)}
-                placeholder="0x… the EVM address your agent signs its Arc transactions with"
+                value={operator}
+                onChange={(e) => setOperator(e.target.value)}
+                placeholder="g1… the address your agent signs its gno.land transactions with"
                 spellCheck={false}
                 className="rounded-xl bg-ink-deep px-3 py-2.5 font-mono text-[13px] text-cream outline-none focus-visible:shadow-[inset_0_0_0_1px_rgb(255_81_72/.7)]"
               />
             </label>
-            {arcOperator.trim() && !isAddress(arcOperator.trim()) ? <p className="m-0 text-[12px] text-pending">That is not an EVM address.</p> : null}
+            {operator.trim() && !isGnoAddress(operator.trim().toLowerCase()) ? <p className="m-0 text-[12px] text-pending">That is not a gno.land address.</p> : null}
             <p className="m-0 text-[13px] text-cream">
-              Deploy fee: ${deployUsd.toFixed(2)} USDC
+              Deploy fee: {deployUsd.toFixed(2)} {chain.token.symbol}
               {paymentTx ? <span className="ml-2 text-win">paid ✓</span> : null}
             </p>
-            <p className="m-0 text-[12px] text-dim">Paid in USDC from your wallet on Arc when you register.</p>
+            <p className="m-0 text-[12px] text-dim">Paid in {chain.token.symbol} from Adena when you register; gas is a little {chain.gas.symbol}.</p>
           </div>
         ) : null}
         {connected && address ? (

@@ -157,6 +157,12 @@ export function actionMessages(caller: string, a: MarketAction, allowanceWei: bi
 /** The mUSD faucet: 1,000 mUSD once a day per address. */
 export const faucetMessage = (caller: string, cfg: GnoConfig = GNO): GnoMsgCall => call(caller, cfg.realms.musd, "Faucet", []);
 
+/** A plain mUSD transfer of `wei` (index units) to `to`, e.g. funding an agent's wallet. */
+export const transferMessage = (caller: string, to: string, wei: bigint, cfg: GnoConfig = GNO): GnoMsgCall => {
+  if (wei <= 0n) throw new Error("Invalid amount");
+  return call(caller, cfg.realms.musd, "Transfer", [to, toMusdUnits(wei)]);
+};
+
 /** Pay an agent for one API call (r/agentpay): approve + Pay in one transaction. */
 export function agentPayMessages(caller: string, agent: string, wei: bigint, callId: string, cfg: GnoConfig = GNO): GnoMsgCall[] {
   const amount = toMusdUnits(wei);

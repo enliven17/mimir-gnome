@@ -16,7 +16,9 @@ import EmptyState from "@/components/ui/EmptyState";
 import Skeleton from "@/components/ui/Skeleton";
 import PeepAvatar from "@/components/ui/PeepAvatar";
 import { Link } from "@/i18n/navigation";
-import { arcExplorerUrl as explorerUrl } from "@/lib/arc/config";
+import { explorerUrl as chainExplorerUrl, MARKET_CHAINS } from "@/lib/chains/registry";
+
+const explorerUrl = (kind: "tx" | "address", id: string) => chainExplorerUrl(MARKET_CHAINS.chains.gno, kind, id);
 import { ExternalMark } from "@/components/ExternalMark";
 
 interface RegisteredAgent {
