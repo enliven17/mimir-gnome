@@ -1,22 +1,21 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { decodeFunctionData, parseEther, zeroAddress } from "viem";
 
 import {
-  createMarketCall,
   maxGrossFor,
-  MIMIR_POOL_ABI,
-  MIMIR_V3_ABI,
   parseUsdc,
   stakeLimitBlocker,
   poolQuote,
-  stakeCall,
   vsChallengeQuote,
   vsCreatorQuote,
   vsRoom,
 } from "../../lib/arc/markets";
 
-const u = (n: string) => parseEther(n);
+/** A decimal amount as index units (18 dp). */
+const u = (n: string) => {
+  const [w, f = ""] = n.split(".");
+  return BigInt(w) * 10n ** 18n + BigInt(f.padEnd(18, "0"));
+};
 
 test("vs challenge: the entry fee comes off the stake, no fee on winnings", () => {
   // creator net 2, I send 2 at 0.5%: fee 0.01, net 1.99, profit 1.99*2/1.99 = 2 → 3.99
@@ -55,19 +54,9 @@ test("parseUsdc accepts plain amounts only", () => {
   assert.equal(parseUsdc("0"), null);
   assert.equal(parseUsdc("1e3"), null);
   assert.equal(parseUsdc("1.1234567"), null);
-});
-
-test("calls carry the gross stake as value, the referrer last", () => {
-  const to = "0x95c540c083b03a0dafe15a6de4ea88e9be5be3be";
-  const ref = "0x00000000000000000000000000000000000000ab";
-  const c = createMarketCall(to, { kind: "vs", question: "q", labelA: "yes", labelB: "no", resolutionUrl: "https://x", category: "crypto", deadline: 100, stake: u("3") });
-  assert.equal(c.value, u("3"));
-  const d = decodeFunctionData({ abi: MIMIR_V3_ABI, data: c.data });
-  assert.equal(d.functionName, "createClaim");
-  assert.equal(d.args[5], u("3"));
-  assert.equal(d.args[16], zeroAddress);
-  const p = decodeFunctionData({ abi: MIMIR_POOL_ABI, data: stakeCall(to, "pool", 7, u("2"), 2, ref).data });
-  assert.deepEqual([p.args[0], p.args[1], String(p.args[2]).toLowerCase()], [7n, 2, ref]);
+  assert.equal(parseUsdc("0.000001"), 1_000_000_000_000n);
+  assert.equal(parseUsdc(" 12 "), u("12"));
+  assert.equal(parseUsdc("-1"), null);
 });
 
 test("stake limits: pause, early lock and launch caps block with a reason", () => {

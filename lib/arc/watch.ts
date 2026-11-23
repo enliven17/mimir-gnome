@@ -14,14 +14,16 @@ export type RoleState = {
 };
 
 const HOUR = 3_600_000;
-const ZERO = "0x0000000000000000000000000000000000000000";
 const same = (a?: string, b?: string) => (a ?? "").toLowerCase() === (b ?? "").toLowerCase();
 
-/** Deployed shape: owner = arbiter = fee recipient (the Safe), oracle = our key, nothing queued, not paused. */
+/** An empty address (gno) or the EVM zero address means nobody. */
+const none = (a?: string) => !a || /^0x0{40}$/i.test(a);
+
+/** Deployed shape: owner = arbiter = fee recipient (Mimir's multisig), oracle = our key, nothing queued, not paused. */
 export function roleProblems(s: RoleState, expectedOracle: string): Problem[] {
   const out: Problem[] = [];
   const at = `${s.name} ${s.address}`;
-  if (s.paused) out.push({ key: `paused:${s.address}`, ttlMs: 6 * HOUR, text: `⏸ ${at} is PAUSED. If that was not you, check the Safe now.` });
+  if (s.paused) out.push({ key: `paused:${s.address}`, ttlMs: 6 * HOUR, text: `⏸ ${at} is PAUSED. If that was not you, check the owner account now.` });
   if (s.oracle !== undefined && !same(s.oracle, expectedOracle))
     out.push({ key: `oracle:${s.address}:${s.oracle}`, ttlMs: 24 * HOUR, text: `🚨 ${at}: oracle is ${s.oracle}, not our key ${expectedOracle}.` });
   if (s.arbiter !== undefined && !same(s.arbiter, s.owner))
@@ -29,8 +31,8 @@ export function roleProblems(s: RoleState, expectedOracle: string): Problem[] {
   if (s.feeRecipient !== undefined && !same(s.feeRecipient, s.owner))
     out.push({ key: `fee:${s.address}:${s.feeRecipient}`, ttlMs: 24 * HOUR, text: `🚨 ${at}: fee recipient ${s.feeRecipient} is not the owner ${s.owner}.` });
   for (const [role, who] of Object.entries(s.pending))
-    if (who && !same(who, ZERO))
-      out.push({ key: `pending:${s.address}:${role}:${who}`, ttlMs: 24 * HOUR, text: `🚨 ${at}: a ${role} change to ${who} is queued (timelocked). If the Safe did not queue it, cancel it.` });
+    if (!none(who))
+      out.push({ key: `pending:${s.address}:${role}:${who}`, ttlMs: 24 * HOUR, text: `🚨 ${at}: a ${role} change to ${who} is queued (timelocked). If the owner did not queue it, cancel it.` });
   return out;
 }
 
@@ -43,6 +45,6 @@ export function proposalProblem(p: { kind: string; marketId: number; question: s
     ttlMs: 30 * 24 * HOUR,
     text:
       `🚨 ORACLE ANOMALY on ${p.kind} #${p.marketId} "${p.question.slice(0, 120)}": the chain says side ${onchainSide}, our oracle recorded ${p.verdictSide ?? "nothing"}. ` +
-      `Possible stolen oracle key: revokeOracle from the Safe, then veto open proposals before ${until} UTC. Do NOT pause first.`,
+      `Possible stolen oracle key: RevokeOracle from the owner, then veto open proposals before ${until} UTC. Do NOT pause first.`,
   };
 }

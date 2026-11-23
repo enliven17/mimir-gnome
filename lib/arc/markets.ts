@@ -1,104 +1,27 @@
 /**
- * Mimir's Arc markets from the app's side: the calls the user's wallet sends
- * (create, stake, challenge) and the quotes the stake
- * UI shows. Pure and isomorphic; amounts are native USDC wei (18 dp), what
- * msg.value spends.
+ * Mimir's markets from the app's side: the quotes the stake UI shows and the live stake limits. Amounts are index
+ * units (mUSD, 18 dp off chain; lib/chains/amounts.ts). The transactions themselves are lib/gno/msgs.ts.
  *
- * VS (MimirV3, pool odds): the creator stakes X, challengers together may
- * stake up to 5X, and the winning side takes the losing side's stake pro rata.
- * Pool (MimirPool): two-sided pari-mutuel, anyone stakes either side.
- * Fees (lib/arc/fees.ts): an entry fee comes off every stake (0.5%) and is
- * kept on refunds; no fee on winnings, except copy
- * trades, which give 1% of the profit to the basket creator and 1% to Mimir.
+ * VS (r/vs, pool odds): the creator stakes X, challengers together may stake up to 5X, and the winning side takes the
+ * losing side's stake pro rata. Pool (r/pool): two-sided pari-mutuel, anyone stakes either side.
+ * Fees (lib/arc/fees.ts): an entry fee comes off every stake (0.5%) and is kept on refunds; no fee on winnings, except
+ * copy trades, which give 1% of the profit to the basket creator and 1% to Mimir.
  */
-import { encodeFunctionData, parseAbi, parseEther, zeroAddress, type Address, type PublicClient } from "viem";
-
-import type { ArcCall } from "./session";
-import { ARC } from "./config";
+import { GNO, type GnoConfig } from "../gno/config";
+import { fromMusdUnits } from "../gno/msgs";
+import { poolConfig, poolMarket, vsClaim, vsConfig } from "../gno/reads";
+import { MIN_STAKE_WEI as REALM_MIN_STAKE_WEI } from "../chains/registry";
 import { COPY_FEE_BPS, REFERRER_FEE_BPS } from "./fees";
 
 export type ArcMarketKind = "vs" | "pool";
 
-/** Both contracts: the deploy-time minimum (gross) stake, betting closes 60 s before the deadline. */
-export const MIN_STAKE_WEI = ARC.contracts.minStakeWei;
+/** Both realms: the minimum (gross) stake, betting closes 60 s before the deadline. */
+export const MIN_STAKE_WEI = REALM_MIN_STAKE_WEI;
 export const LOCK_SECONDS = 60;
 export const MAX_POOL_MULTIPLE = 5n;
 
-export const MIMIR_V3_ABI = parseAbi([
-  "function createClaim(string question, string creatorPosition, string counterPosition, string resolutionUrl, uint256 deadline, uint256 stakeAmount, string category, uint256 parentId, string marketType, string oddsMode, uint256 challengerPayoutBps, string handicapLine, string settlementRule, uint256 maxChallengers, bool isPrivate, string inviteKey, address referrer) payable returns (uint256)",
-  "function challengeClaim(uint256 claimId, uint256 stakeAmount, string inviteKey, address referrer) payable",
-  "function setInvited(uint256 claimId, address[] accounts, bool allowed)",
-  "function invited(uint256 claimId, address account) view returns (bool)",
-  "error NotInvited()",
-  "error BadInvite()",
-  "function cancelClaim(uint256 claimId)",
-  "function disputeResolution(uint256 claimId) payable",
-  "event ClaimCreated(uint256 indexed id, address indexed creator, string category)",
-]);
-export const MIMIR_POOL_ABI = parseAbi([
-  "function createMarket(string question, string labelA, string labelB, string resolutionUrl, string category, uint256 deadline, uint8 side, address referrer) payable returns (uint256)",
-  "function stake(uint256 id, uint8 side, address referrer) payable",
-  "function dispute(uint256 id) payable",
-  "event MarketCreated(uint256 indexed id, address indexed creator, uint256 deadline, string category)",
-]);
-export const MIMIR_FEES_ABI = parseAbi([
-  "function entryBps(address account) view returns (uint16)",
-]);
-
-export interface NewMarket {
-  kind: ArcMarketKind;
-  question: string;
-  /** VS: your side / the side you bet against. Pool: side A / side B. */
-  labelA: string;
-  labelB: string;
-  resolutionUrl: string;
-  category: string;
-  /** Unix seconds. */
-  deadline: number;
-  /** Gross: what leaves the account; the entry fee comes off it. */
-  stake: bigint;
-  /** Pool only: which side your opening stake backs (1 = A, 2 = B). VS: you always back side A. */
-  side?: 1 | 2;
-  /** The basket creator, when this is a copy trade. */
-  referrer?: Address;
-}
-
-export function createMarketCall(contract: Address, m: NewMarket): ArcCall {
-  const referrer = m.referrer ?? zeroAddress;
-  const data =
-    m.kind === "vs"
-      ? encodeFunctionData({
-          abi: MIMIR_V3_ABI,
-          functionName: "createClaim",
-          args: [m.question, m.labelA, m.labelB, m.resolutionUrl, BigInt(m.deadline), m.stake, m.category, 0n, "binary", "pool", 0n, "", "", 0n, false, "", referrer],
-        })
-      : encodeFunctionData({
-          abi: MIMIR_POOL_ABI,
-          functionName: "createMarket",
-          args: [m.question, m.labelA, m.labelB, m.resolutionUrl, m.category, BigInt(m.deadline), m.side ?? 1, referrer],
-        });
-  return { to: contract, data, value: m.stake };
-}
-
-/** VS: challenge (you take side B). Pool: stake on `side`. `stake` is gross. */
-export function stakeCall(contract: Address, kind: ArcMarketKind, marketId: number, stake: bigint, side: 1 | 2, referrer: Address = zeroAddress): ArcCall {
-  const data =
-    kind === "vs"
-      ? encodeFunctionData({ abi: MIMIR_V3_ABI, functionName: "challengeClaim", args: [BigInt(marketId), stake, "", referrer] })
-      : encodeFunctionData({ abi: MIMIR_POOL_ABI, functionName: "stake", args: [BigInt(marketId), side, referrer] });
-  return { to: contract, data, value: stake };
-}
-
-/** Both contracts: launch caps, the early lock (setLockAt) and the emergency pause, as the stake UI checks them. */
-export const STAKE_LIMITS_ABI = parseAbi([
-  "function maxMarketStake() view returns (uint256)",
-  "function maxAccountStake() view returns (uint256)",
-  "function lockAt(uint256) view returns (uint256)",
-  "function paused() view returns (bool)",
-]);
-
 export interface StakeLimits {
-  /** Net USDC wei; 0 = no cap. */
+  /** Net, index units; 0 = no cap. */
   maxMarket: bigint;
   maxAccount: bigint;
   /** Unix seconds betting closed early; 0 = the usual lock. */
@@ -106,29 +29,28 @@ export interface StakeLimits {
   paused: boolean;
 }
 
-export async function readStakeLimits(client: PublicClient, contract: Address, marketId: number): Promise<StakeLimits> {
-  const read = <T,>(functionName: "maxMarketStake" | "maxAccountStake" | "paused" | "lockAt", args?: readonly [bigint]) =>
-    client.readContract({ address: contract, abi: STAKE_LIMITS_ABI, functionName, args } as Parameters<PublicClient["readContract"]>[0]) as Promise<T>;
-  const [maxMarket, maxAccount, lockAt, paused] = await Promise.all([
-    read<bigint>("maxMarketStake"),
-    read<bigint>("maxAccountStake"),
-    read<bigint>("lockAt", [BigInt(marketId)]),
-    read<boolean>("paused"),
+/** The realm config (caps, pause) and the market (early lock), read live: the index can lag a block or two. Caps in index units. */
+export async function readStakeLimits(kind: ArcMarketKind, marketId: number, cfg: GnoConfig = GNO): Promise<StakeLimits> {
+  const [c, m] = await Promise.all([
+    kind === "vs" ? vsConfig(cfg) : poolConfig(cfg),
+    kind === "vs" ? vsClaim(marketId, cfg) : poolMarket(marketId, cfg),
   ]);
-  return { maxMarket, maxAccount, lockAt: Number(lockAt), paused };
+  return { maxMarket: fromMusdUnits(c.maxMarketStake), maxAccount: fromMusdUnits(c.maxAccountStake), lockAt: m.lockAt, paused: c.paused };
 }
+
+
 
 /**
  * Why a stake of `gross` would revert on the pause, the early lock or the caps (CapExceeded); null when it fits.
  * Caps count net stakes. `mine`: your net stake already in this market; a pool caps your total there, VS caps each
- * challenge (MimirV3 _checkCaps(net, ...)). `total`: both sides' net stakes now.
+ * challenge (the realms check net stakes). `total`: both sides' net stakes now.
  */
 export function stakeLimitBlocker(
   l: StakeLimits,
   a: { kind: ArcMarketKind; gross: bigint; entryBps: number; mine: bigint; total: bigint; now: number },
   fmt: (wei: bigint) => string,
 ): string | null {
-  if (l.paused) return "Staking is paused on this contract for now. Your funds are safe; refunds stay open.";
+  if (l.paused) return "Staking is paused on this market for now. Your funds are safe; refunds stay open.";
   if (l.lockAt !== 0 && a.now >= l.lockAt) return "Betting on this market closed early.";
   const net = a.gross - entryFeeOf(a.gross, a.entryBps);
   if (l.maxMarket !== 0n && a.total + net > l.maxMarket) {
@@ -165,7 +87,7 @@ export interface Quote {
 export function vsChallengeQuote(creatorStake: bigint, totalChallengers: bigint, gross: bigint, entryBps: number, copy = false): Quote {
   const fee = entryFeeOf(gross, entryBps);
   const net = gross - fee;
-  // The creator risks at most 5x what challengers put in (MimirV3 _settle), so a lone small challenger wins 5x, not the pot.
+  // The creator risks at most 5x what challengers put in (r/vs settle), so a lone small challenger wins 5x, not the pot.
   const pool = totalChallengers + net;
   const atRisk = creatorStake < pool * MAX_POOL_MULTIPLE ? creatorStake : pool * MAX_POOL_MULTIPLE;
   const profit = pool === 0n ? 0n : (net * atRisk) / pool;
@@ -201,11 +123,11 @@ export function poolQuote(sideTotal: bigint, otherSide: bigint, gross: bigint, e
   return { risk: gross, fee, win: net + profit - copyFees(profit, copy), atMost: false };
 }
 
-/** "2.5" → wei; null for anything that is not a positive amount with at most 6 decimals. */
+/** "2.5" → index units; null for anything that is not a positive amount with at most 6 decimals (mUSD). */
 export function parseUsdc(input: string): bigint | null {
-  const s = input.trim();
-  if (!/^\d+(\.\d{1,6})?$/.test(s)) return null;
-  const wei = parseEther(s);
+  const m = /^(\d+)(?:\.(\d{1,6}))?$/.exec(input.trim());
+  if (!m) return null;
+  const wei = BigInt(m[1]) * 10n ** 18n + BigInt((m[2] ?? "").padEnd(18, "0"));
   return wei > 0n ? wei : null;
 }
 

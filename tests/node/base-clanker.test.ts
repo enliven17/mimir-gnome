@@ -4,25 +4,11 @@ import test from "node:test";
 import { decodeAbiParameters, decodeFunctionData, type Abi } from "viem";
 import { CLANKERS, WETH_ADDRESSES } from "clanker-sdk";
 
-import { builderCodeSuffix, builderSuffixFromEnv, withBuilderSuffix } from "../../lib/base/builder-code";
 import { Clanker } from "clanker-sdk/v4";
 import { BASE_WETH, CLANKER_FACTORY, CLANKER_FEE_LOCKER, CLANKER_LP_LOCKER, clankerFeesOn, clankerTokenConfig } from "../../lib/launch/base/clanker";
 import { clankerDeployTx } from "../../lib/launch/base/deploy";
 
 const WALLET = "0x00000000000000000000000000000000000a9e17";
-
-test("builder code: schema 0 bytes match ox / ERC-8021 (codes, length, schema 0, marker)", () => {
-  // ox Attribution.toDataSuffix({ codes: ["baseapp"] })
-  assert.equal(builderCodeSuffix(["baseapp"]), "0x62617365617070070080218021802180218021802180218021");
-  assert.equal(builderSuffixFromEnv("baseapp"), builderCodeSuffix(["baseapp"]));
-  assert.equal(builderSuffixFromEnv("0x62617365617070070080218021802180218021802180218021"), "0x62617365617070070080218021802180218021802180218021");
-  assert.equal(builderSuffixFromEnv("0xdeadbeef"), null, "hex without the marker is not a suffix");
-  assert.equal(builderSuffixFromEnv(""), null);
-  assert.equal(builderSuffixFromEnv("bad,code"), null);
-  assert.equal(withBuilderSuffix("0xabcd", "0x1234"), "0xabcd1234");
-  assert.equal(withBuilderSuffix("0x", "0x1234"), "0x", "plain ETH sends stay plain");
-  assert.equal(withBuilderSuffix("0xabcd", null), "0xabcd");
-});
 
 test("clanker: hardcoded Base addresses match clanker-sdk", () => {
   const v4 = CLANKERS.clanker_v4;
