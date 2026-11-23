@@ -24,7 +24,6 @@ var (
 	bob   = testutils.TestAddress("bob")
 )
 
-
 func TestTickets(cur realm, t *testing.T) {
 	exp := time.Now().Unix() + 3600
 	admin := Owner()
