@@ -8,7 +8,8 @@ import { v } from "convex/values";
 // Amounts are 18-dp index-unit strings on every chain (lib/chains/amounts.ts: Base's 6-dp USDC is scaled by 1e12 on
 // the way in; 18 dp overflows int64 past ~9.2 USDC); the *Usd floats are for sorting and display.
 const kind = v.union(v.literal("vs"), v.literal("pool"));
-export const vChain = v.union(v.literal("arc"), v.literal("base"));
+/** The market chain: gno.land only (lib/chains/registry.ts). */
+export const vChain = v.literal("gno");
 /** Optional only so pre-Base rows validate until the backfill; every new row sets it. */
 const chain = v.optional(vChain);
 /**
@@ -33,8 +34,8 @@ export const status = v.union(
 
 export default defineSchema({
   marketDeployments: defineTable({
-    chain: vChain, chainId: v.number(), network: v.string(), v3: v.string(), pool: v.string(),
-    fees: v.string(), usdc: v.string(), fromBlock: v.string(), boundAt: v.number(),
+    chain: vChain, chainId: v.string(), network: v.string(), vs: v.string(), pool: v.string(),
+    fees: v.string(), musd: v.string(), boundAt: v.number(),
   }).index("by_chain", ["chain"]),
   arcMarkets: defineTable({
     chain,
