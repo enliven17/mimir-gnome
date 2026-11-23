@@ -8,9 +8,8 @@ import { assertMarketDeployment } from "./marketDeploymentGuard";
 import { v } from "convex/values";
 import { internalMutation, internalQuery, type QueryCtx } from "./_generated/server";
 import { vChain } from "./schema";
-import { houseCreatorWallet } from "../lib/chains/house";
+import { budgetDay, fitsBudget, houseCreatorWallet } from "../lib/chains/house";
 import { usdToIndex } from "../lib/chains/amounts";
-import { budgetDay, fitsBudget } from "../lib/chains/twins";
 
 const envNum = (name: string, fallback: number) => {
   const raw = process.env[name];
