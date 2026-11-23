@@ -10,12 +10,12 @@ import {
 } from "../../lib/money";
 
 test("formatUsdc renders dust, sub-dollar and dollar amounts distinctly", () => {
-  assert.equal(formatUsdc(0), "0 USDC");
-  assert.equal(formatUsdc(Number.NaN), "0 USDC");
-  assert.equal(formatUsdc(0.0000001), "<0.000001 USDC");
-  assert.equal(formatUsdc(0.5), "0.5 USDC");
-  assert.equal(formatUsdc(0.123456), "0.123456 USDC");
-  assert.equal(formatUsdc(1234.5), "1,234.50 USDC");
+  assert.equal(formatUsdc(0), "0 mUSD");
+  assert.equal(formatUsdc(Number.NaN), "0 mUSD");
+  assert.equal(formatUsdc(0.0000001), "<0.000001 mUSD");
+  assert.equal(formatUsdc(0.5), "0.5 mUSD");
+  assert.equal(formatUsdc(0.123456), "0.123456 mUSD");
+  assert.equal(formatUsdc(1234.5), "1,234.50 mUSD");
 });
 
 test("formatUsdcBare drops trailing zeros and the unit", () => {
@@ -31,5 +31,5 @@ test("base units convert at 6 decimals from bigint, string or number", () => {
   assert.equal(unitsToUsdc(undefined), 0);
   assert.equal(unitsToUsdc("not a number"), 0);
   assert.equal(formatUsdcUnitsBare("1234567890"), "1,234.57");
-  assert.equal(formatUsdcUnits(3_000_000n), "3.00 USDC");
+  assert.equal(formatUsdcUnits(3_000_000n), "3.00 mUSD");
 });

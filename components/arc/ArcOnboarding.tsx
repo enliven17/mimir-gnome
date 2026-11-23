@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * First steps on Arc, shown on the Arena until done or dismissed: connect an EVM wallet, add USDC on Arc, place a
+ * First steps on gno.land, shown on the Arena until done or dismissed: connect Adena, get mUSD (the faucet), place a
  * first stake. Every step reads real state; nothing is ticked by hand. Funding counts as done once the wallet has
  * staked (a spent balance is not a step undone), and once all three are done the card is gone for good.
  */
@@ -32,7 +32,7 @@ export default function ArcOnboarding() {
 
   const steps: Array<{ title: string; done: boolean; href: string }> = [
     { title: "Connect your wallet", done: Boolean(account.address), href: "/arena" },
-    { title: `Add USDC on ${account.chainConfig.label}`, done: (account.balance ?? 0n) > 0n || (positions?.length ?? 0) > 0, href: "/arena" },
+    { title: `Get ${account.chainConfig.token.symbol} on ${account.chainConfig.label}`, done: (account.balance ?? 0n) > 0n || (positions?.length ?? 0) > 0, href: "/arena" },
     { title: "Place your first stake", done: (positions?.length ?? 0) > 0, href: "/arena" },
   ];
   const doneCount = steps.filter((s) => s.done).length;
@@ -70,7 +70,7 @@ export default function ArcOnboarding() {
           <li key={s.title} className={`rounded-xl p-3 text-[13px] ${s.done ? "bg-panel text-muted" : s === next ? "bg-panel-raised text-cream shadow-[inset_0_0_0_1px_rgb(255_81_72/.5)]" : "bg-panel text-dim"}`}>
             <span className={`mr-1.5 font-mono ${s.done ? "text-win" : "text-coral"}`}>{s.done ? "✓" : i + 1}</span>
             {s === next ? (
-              i === 0 ? <button type="button" onClick={sheet.open} className="hover:underline">{s.title}</button> : i === 1 ? <WalletFunding chain={account.chainConfig} address={account.address} /> : <Link href={s.href} className="hover:underline">{s.title}</Link>
+              i === 0 ? <button type="button" onClick={sheet.open} className="hover:underline">{s.title}</button> : i === 1 ? <WalletFunding chain={account.chainConfig} address={account.address} onFunded={() => void account.reload()} /> : <Link href={s.href} className="hover:underline">{s.title}</Link>
             ) : (
               s.title
             )}

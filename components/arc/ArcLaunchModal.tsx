@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * Everyone, once: Mimir is live on Arc mainnet, and a market is only as good as its terms (question, deadline,
+ * Everyone, once: Mimir is live on gno.land, and a market is only as good as its terms (question, deadline,
  * source). A first visit reads the terms card first; the modal follows once they are accepted. Dismissal is
  * remembered in localStorage; a blocked or cleared store just means it shows again, never an error. Waits a beat
  * after load so it does not fight the landing's own entrance.
@@ -15,7 +15,7 @@ import Modal from "@/components/ui/Modal";
 import { Link } from "@/i18n/navigation";
 import { NetworkLogos } from "./NetworkLogos";
 
-const KEY = "mimir:mainnet-live-seen";
+const KEY = "mimir:gno-launch-seen";
 
 export default function ArcLaunchModal() {
   const t = useTranslations("arcLaunch");
@@ -66,7 +66,7 @@ export default function ArcLaunchModal() {
     >
       <div className="grid gap-3">
         <p className="m-0 font-mono text-[12px] uppercase tracking-[0.2em] text-coral">{t("eyebrow")}</p>
-        <NetworkLogos className="h-6 max-sm:hidden" base />
+        <NetworkLogos className="h-6 max-sm:hidden" />
         <p className="m-0 text-[14px] leading-relaxed text-muted">{t("body")}</p>
         <ul className="m-0 grid list-none gap-1.5 p-0">
           {(t.raw("points") as string[]).map((p) => (

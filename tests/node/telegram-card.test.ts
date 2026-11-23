@@ -57,7 +57,7 @@ test("the card model reads the market", () => {
   assert.equal(won.headline, "You won");
   assert.equal(won.tone, "win");
   assert.deepEqual(won.sides.map((s) => [s.pct, s.lead, s.tag]), [[75, false, null], [25, true, "Your side"]]);
-  assert.deepEqual(won.footer, ["3 participants", "4.00 USDC staked"]);
+  assert.deepEqual(won.footer, ["3 participants", "4.00 mUSD staked"]);
   const proposed = cardModel({ type: "proposed", kind: "vs", id: 12, side: 0 }, market);
   assert.match(proposed.detail, /^“No” · 91% sure · disputable until/);
   assert.equal(proposed.sides[1].tag, "Proposed");

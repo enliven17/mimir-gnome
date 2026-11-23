@@ -140,7 +140,7 @@ export interface CardModel {
 
 const WEI_PER_CENT = 10n ** 16n;
 
-/** USDC from 18-decimal wei, two decimals ("12.50"). */
+/** mUSD from 18-decimal index units, two decimals ("12.50"). */
 export function usdcText(wei: string): string {
   const cents = BigInt(wei || "0") / WEI_PER_CENT;
   return `${cents / 100n}.${String(cents % 100n).padStart(2, "0")}`;
@@ -219,7 +219,7 @@ export function cardModel(
           ? [
               "Take a side",
               "accent",
-              `Pot ${usdcText(total.toString())} USDC · closes ${utc(m.deadline)}`,
+              `Pot ${usdcText(total.toString())} mUSD · closes ${utc(m.deadline)}`,
             ]
           : [
               "Settling",
@@ -246,7 +246,7 @@ export function cardModel(
   const detail: Record<CardType, string> = {
     share: share[2],
     winner: winnerLabel ? `${named(winnerLabel)} won · paid out automatically` : "Settled",
-    new: `Opening stake ${usdcText(m.stakeA)} USDC · closes ${utc(m.deadline)}`,
+    new: `Opening stake ${usdcText(m.stakeA)} mUSD · closes ${utc(m.deadline)}`,
     proposed: winnerLabel
       ? `${named(winnerLabel)}${confidence ? ` · ${confidence}% sure` : ""}${m.disputableUntil ? ` · disputable until ${utc(m.disputableUntil)}` : ""}`
       : `No winner: a refund${m.disputableUntil ? ` · disputable until ${utc(m.disputableUntil)}` : ""}`,
@@ -267,7 +267,7 @@ export function cardModel(
     sides,
     footer: [
       `${m.participants} ${m.participants === 1 ? "participant" : "participants"}`,
-      `${usdcText(total.toString())} USDC staked`,
+      `${usdcText(total.toString())} mUSD staked`,
     ],
   };
 }

@@ -1,8 +1,8 @@
 /**
- * Canonical USDC display formatting. All UI money rendering goes through here
+ * Canonical mUSD display formatting. All UI money rendering goes through here
  * so amounts read the same on every page.
  *
- * USDC amounts are 6-decimal base units, carried as strings (or bigint) by the
+ * mUSD amounts are 6-decimal base units, carried as strings (or bigint) by the
  * APIs, so the `*Units` helpers take those directly.
  */
 
@@ -13,23 +13,23 @@ function trimFixed(value: number, decimals: number): string {
   return value.toFixed(decimals).replace(/\.?0+$/, "");
 }
 
-/** Base units (bigint, numeric string or number) to a USDC number. NaN-safe: junk is 0. */
+/** Base units (bigint, numeric string or number) to an mUSD number. NaN-safe: junk is 0. */
 export function unitsToUsdc(units: bigint | string | number | null | undefined): number {
   if (units === null || units === undefined || units === "") return 0;
   const n = typeof units === "bigint" ? Number(units) : Number(units);
   return Number.isFinite(n) ? n / UNITS_PER_USDC : 0;
 }
 
-/** Full display string with unit: "1,234.56 USDC", "<0.000001 USDC", "0 USDC". */
+/** Full display string with unit: "1,234.56 mUSD", "<0.000001 mUSD", "0 mUSD". */
 export function formatUsdc(value: number): string {
-  if (!Number.isFinite(value) || value === 0) return "0 USDC";
+  if (!Number.isFinite(value) || value === 0) return "0 mUSD";
   const abs = Math.abs(value);
-  if (abs < 0.000001) return "<0.000001 USDC";
-  if (abs < 1) return `${trimFixed(value, 6)} USDC`;
+  if (abs < 0.000001) return "<0.000001 mUSD";
+  if (abs < 1) return `${trimFixed(value, 6)} mUSD`;
   return `${value.toLocaleString("en-US", {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
-  })} USDC`;
+  })} mUSD`;
 }
 
 /** Bare number ("1,234.56", "12") for layouts that render the unit separately. */
@@ -50,7 +50,7 @@ export function formatUsdcUnitsBare(units: bigint | string | number | null | und
   return formatUsdcBare(unitsToUsdc(units));
 }
 
-/** Keep an amount and its unit on one line ("7.00 USDC" never wraps before "USDC"). */
+/** Keep an amount and its unit on one line ("7.00 mUSD" never wraps before "mUSD"). */
 export function nowrap(amount: string): string {
   return amount.replace(/ /g, " ");
 }
