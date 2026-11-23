@@ -16,6 +16,9 @@ import (
 	"gno.land/p/nt/ufmt/v0"
 )
 
+// Deployer owns Mint, used to seed agent and council wallets.
+const Deployer = address("g12dcsmwccgdxasqde2eumua88tlrkw83kqf6tcz")
+
 const (
 	Decimals       = 6
 	Unit           = int64(1_000_000)
@@ -35,7 +38,7 @@ var (
 func init(cur realm) {
 	Token, ledger = grc20.NewToken("Mimir USD", "mUSD", Decimals, 0, cur)
 	userTeller = ledger.CallerTeller()
-	Ownable = ownable.NewWithAddress(cur.Previous().Address())
+	Ownable = ownable.NewWithAddress(Deployer)
 }
 
 func TotalSupply() int64                     { return userTeller.TotalSupply() }
