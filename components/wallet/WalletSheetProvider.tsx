@@ -2,8 +2,7 @@
 
 /**
  * Opens and closes the connect sheet from anywhere (header chip, page gates). Mounted inside the i18n provider
- * (app/[locale]/layout), so the sheet is translated. The sheet picks the network (Arc or Base) and hands over to
- * ConnectKit.
+ * (app/[locale]/layout), so the sheet is translated. The sheet connects Adena, or links to its install page.
  */
 import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from "react";
 

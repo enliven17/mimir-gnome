@@ -60,3 +60,6 @@ export const txUrl = (hash: string, cfg: GnoConfig = GNO) => `${cfg.gnoweb}/tx/$
 
 /** A bech32 gno.land address. */
 export const isGnoAddress = (v: unknown): v is string => typeof v === "string" && /^g1[02-9ac-hj-np-z]{38}$/.test(v.trim());
+
+/** Where testnet users get GNOT for gas. */
+export const GNOT_FAUCET_URL = process.env.NEXT_PUBLIC_GNO_FAUCET_URL?.trim() || "https://faucet.gno.land";

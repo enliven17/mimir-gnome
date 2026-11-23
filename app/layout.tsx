@@ -3,7 +3,6 @@ import type { Viewport } from "next";
 import { headers } from "next/headers";
 import { fontVariables } from "@/lib/fonts";
 import MotionProvider from "@/components/motion/MotionProvider";
-import EvmConnectHost from "@/components/arc/EvmConnectHost";
 import { Toaster } from "sonner";
 import { Analytics } from "@vercel/analytics/next";
 
@@ -43,7 +42,6 @@ export default async function RootLayout({
         <div className="wall" aria-hidden />
         <MotionProvider>
           {children}
-          <EvmConnectHost />
           <Toaster
             position="bottom-center"
             toastOptions={{

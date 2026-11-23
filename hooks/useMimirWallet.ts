@@ -1,42 +1,42 @@
 "use client";
 
 /**
- * The one place UI code reads the wallet: the connected EVM wallet (ConnectKit, components/arc/useEvmWallet.ts), on
- * Arc or Base. Its address is the user's identity everywhere on Mimir. `signMessage` is EIP-191 personal_sign and
- * returns the 0x signature lib/owner.ts verifies; null while nothing is connected.
+ * The one place UI code reads the wallet: the connected Adena account (components/wallet/useAdenaWallet.ts) on
+ * gno.land. Its g1 address is the user's identity everywhere on Mimir. `signMessage` is Adena SignArbitrary and returns
+ * the JSON proof lib/owner.ts verifies; null while nothing is connected.
  */
 import { useCallback } from "react";
-import type { Address, Hex } from "viem";
 
-import { connectEvm, disconnectEvm, evmNetworkName, signWithEvm, useEvmAccount, type EvmChainIntent } from "@/components/arc/useEvmWallet";
+import { connectWallet, disconnectWallet, signWithWallet, useAdenaAccount } from "@/components/wallet/useAdenaWallet";
+import { GNO } from "@/lib/gno/config";
 
 export interface MimirWallet {
-  address: Address | null;
+  address: string | null;
   connected: boolean;
   connecting: boolean;
-  /** The network picked when connecting, or of the last send. */
-  intent: EvmChainIntent | null;
-  networkName: string | null;
-  connect(intent?: EvmChainIntent): Promise<Address>;
+  /** Adena is installed in this browser. */
+  installed: boolean;
+  networkName: string;
+  connect(): Promise<string>;
   disconnect(): Promise<void>;
-  signMessage: ((message: string) => Promise<Hex>) | null;
+  signMessage: ((message: string) => Promise<string>) | null;
 }
 
 export function useMimirWallet(): MimirWallet {
-  const a = useEvmAccount();
+  const a = useAdenaAccount();
   const address = a.address;
   const sign = useCallback((message: string) => {
     if (!address) return Promise.reject(new Error("Connect your wallet first."));
-    return signWithEvm(address, message);
+    return signWithWallet(address, message);
   }, [address]);
   return {
     address,
     connected: Boolean(address),
     connecting: a.connecting,
-    intent: a.intent,
-    networkName: evmNetworkName(a.intent),
-    connect: connectEvm,
-    disconnect: disconnectEvm,
+    installed: a.installed,
+    networkName: GNO.chainName,
+    connect: connectWallet,
+    disconnect: disconnectWallet,
     signMessage: address ? sign : null,
   };
 }
