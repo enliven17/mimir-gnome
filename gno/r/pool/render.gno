@@ -85,14 +85,14 @@ func renderMarket(m *Market) string {
 	}
 	switch m.State {
 	case StProposed:
-		b.WriteString(ufmt.Sprintf("\n## Proposed: %s\n\nDisputable until %s.\n\n> %s\n\nEvidence hash: `%s`\n",
-			outcomeName(m, m.Proposed), when(m.ProposedAt+disputeWindow), mimir.Escape(m.Summary), m.EvidenceHash))
+		b.WriteString(ufmt.Sprintf("\n## Proposed: %s\n\nDisputable until %s.\n\n> %s\n\nEvidence: %s\n",
+			outcomeName(m, m.Proposed), when(m.ProposedAt+disputeWindow), mimir.Escape(m.Summary), hashOrNone(m.EvidenceHash)))
 	case StDisputed:
 		b.WriteString(ufmt.Sprintf("\n## Disputed\n\nThe roles.Oracle proposed %s; the roles.Arbiter rules.\n\n> %s\n",
 			outcomeName(m, m.Proposed), mimir.Escape(m.Summary)))
 	case StResolved:
-		b.WriteString(ufmt.Sprintf("\n## Result: %s\n\n> %s\n\nEvidence hash: `%s`\n",
-			outcomeName(m, m.Outcome), mimir.Escape(m.Summary), m.EvidenceHash))
+		b.WriteString(ufmt.Sprintf("\n## Result: %s\n\n> %s\n\nEvidence: %s\n",
+			outcomeName(m, m.Outcome), mimir.Escape(m.Summary), hashOrNone(m.EvidenceHash)))
 	}
 	b.WriteString("\n## Act\n\n")
 	b.WriteString("Approve this realm on mUSD first, then call:\n\n")
@@ -103,4 +103,11 @@ func renderMarket(m *Market) string {
 
 func helpLink(fn string, id int64) string {
 	return ufmt.Sprintf("$help&func=%s&id=%d", fn, id)
+}
+
+func hashOrNone(h string) string {
+	if h == "" {
+		return "none"
+	}
+	return "`" + h + "`"
 }
