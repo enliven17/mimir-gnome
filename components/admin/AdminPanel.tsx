@@ -190,7 +190,7 @@ function Dashboard({ d, error, token }: { d: AdminOverview; error: string | null
           <Table
             head={["Market", "Question", "State", "Deadline", "Dispute ends", "Stakes A / B", "People", "Creator", "Take"]}
             rows={b.markets.live.map((m) => [
-              <Link key="l" href={marketPath(m.chain, m.kind, m.marketId)} className="whitespace-nowrap text-coral hover:underline">{m.chain === "base" ? "Base " : ""}{m.kind.toUpperCase()} #{m.marketId}</Link>,
+              <Link key="l" href={marketPath(m.chain, m.kind, m.marketId)} className="whitespace-nowrap text-coral hover:underline">{m.kind.toUpperCase()} #{m.marketId}</Link>,
               <span key="q" className="line-clamp-2">{m.question}</span>,
               m.status,
               <span key="d" className={`whitespace-nowrap ${m.deadline < now ? "text-pending" : ""}`}>{until(m.deadline, now)}</span>,
@@ -225,7 +225,7 @@ function Dashboard({ d, error, token }: { d: AdminOverview; error: string | null
           <Table
             head={["Market", "Question", "Result", "Confidence", "Summary", "Tx"]}
             rows={b.markets.settled.map((m) => [
-              <Link key="l" href={marketPath(m.chain, m.kind, m.marketId)} className="whitespace-nowrap text-coral hover:underline">{m.chain === "base" ? "Base " : ""}{m.kind.toUpperCase()} #{m.marketId}</Link>,
+              <Link key="l" href={marketPath(m.chain, m.kind, m.marketId)} className="whitespace-nowrap text-coral hover:underline">{m.kind.toUpperCase()} #{m.marketId}</Link>,
               <span key="q" className="line-clamp-2">{m.question}</span>,
               m.status === "cancelled" ? "cancelled" : m.winner === 1 ? "A" : m.winner === 2 ? "B" : m.winner === 3 ? "draw" : "refund",
               m.confidence == null ? "–" : `${m.confidence}%`,

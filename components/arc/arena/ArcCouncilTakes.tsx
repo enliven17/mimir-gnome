@@ -89,7 +89,7 @@ function Carousel({ children, count }: { children: ReactNode; count: number }) {
   );
 }
 
-export default function ArcCouncilTakes({ chain = "arc", kind, marketId, labelA, labelB }: { chain?: MarketChainId; kind: ArcMarketKind; marketId: number; labelA: string; labelB: string }) {
+export default function ArcCouncilTakes({ chain = "gno", kind, marketId, labelA, labelB }: { chain?: MarketChainId; kind: ArcMarketKind; marketId: number; labelA: string; labelB: string }) {
   const takes = useQuery(api.arcCouncilDb.forMarket, { chain, kind, marketId });
   const initialTake = useQuery(api.arcCouncilDb.takeFor, { chain, kind, marketId });
   const opinions = useQuery(api.councilOpinions.forMarket, { chain, kind, marketId });

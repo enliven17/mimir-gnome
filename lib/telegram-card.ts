@@ -28,8 +28,8 @@ export const CAPTION_MAX = 1024;
 
 export interface CardQuery {
   type: CardType;
-  /** The market's chain ("chain" param; absent = Arc, every card URL from before Base). */
-  chain?: "arc" | "base";
+  /** The market's chain ("chain" param; absent = gno.land, the only chain). */
+  chain?: "gno";
   kind: CardKind;
   id: number;
   /** The side the recipient holds (won / lost cards mark it); 0 when not given. */
@@ -50,8 +50,8 @@ export function parseCardQuery(
   if (id < 1) return null;
   const rawSide = params.get("side");
   if (rawSide !== null && rawSide !== "1" && rawSide !== "2") return null;
-  const chain = params.get("chain") ?? "arc";
-  if (chain !== "arc" && chain !== "base") return null;
+  const chain = params.get("chain") ?? "gno";
+  if (chain !== "gno") return null;
   return {
     type: type as CardType,
     chain,
@@ -68,16 +68,15 @@ export function cardUrl(
   id: number,
   side?: number,
   origin = SITE_URL,
-  chain: "arc" | "base" = "arc",
+  _chain: "gno" = "gno",
 ): string {
   const q = new URLSearchParams({ kind, id: String(id) });
   if (side === 1 || side === 2) q.set("side", String(side));
-  if (chain !== "arc") q.set("chain", chain);
   q.set("v", String(CARD_VERSION));
   return `${origin}/api/telegram/card/${type}?${q}`;
 }
 
-/** The card a personal Arc event gets: the market's new state, from this holder's point of view. */
+/** The card a personal market event gets: the market's new state, from this holder's point of view. */
 export function cardTypeFor(
   e: { type: "new" | "proposed" | "resolved" | "cancelled"; winner: number; stakeA?: string; stakeB?: string; settlementCutoff?: number; eligibleA?: string; eligibleB?: string },
   side: number,

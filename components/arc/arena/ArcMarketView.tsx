@@ -1,11 +1,9 @@
 "use client";
 
 /**
- * /arena/<chain>/<kind>/<id>: one market on Base or Arc, live from Convex. The
- * question, its network, both sides with their money, time left or the verdict,
- * the stake box while betting is open, who is in, and the same market on the
- * other network (linked, lib/chains/linked.ts): both legs' figures side by side
- * and a "Stake on Base / Stake on Arc" switch in the stake box.
+ * /arena/gno/<kind>/<id>: one market on gno.land, live from Convex. The
+ * question, both sides with their money, time left or the verdict, the stake
+ * box while betting is open and who is in.
  */
 import { useEffect, useRef, useState } from "react";
 import { useQuery } from "@/lib/convex-react";
@@ -18,9 +16,8 @@ import Skeleton from "@/components/ui/Skeleton";
 import Modal from "@/components/ui/Modal";
 import { Link } from "@/i18n/navigation";
 import type { ArcMarketKind } from "@/lib/arc/markets";
-import { explorerUrl, MARKET_CHAINS, marketChain, marketContract, type MarketChainId } from "@/lib/chains/registry";
+import { explorerUrl, marketChain, marketRealmUrl, type MarketChainId } from "@/lib/chains/registry";
 import { ChainBadge } from "../NetworkLogos";
-import { LegsCompare, LegStakeBox, StakeChainSwitch, type Leg } from "./MarketLegs";
 import RollingNumber from "@/components/motion/RollingNumber";
 import { weiToUsd } from "@/lib/arc/markets";
 import ArcActivity from "./ArcActivity";
@@ -61,7 +58,7 @@ function useWide(): boolean {
   return wide;
 }
 
-export default function ArcMarketView({ chain = "arc", kind, marketId }: { chain?: MarketChainId; kind: ArcMarketKind; marketId: number }) {
+export default function ArcMarketView({ chain = "gno", kind, marketId }: { chain?: MarketChainId; kind: ArcMarketKind; marketId: number }) {
   // Right after the creator opened it (ArcCreateForm sends ?new=1): the share prompt instead of the small buttons.
   const [fresh, setFresh] = useState(false);
   useEffect(() => setFresh(new URLSearchParams(window.location.search).get("new") === "1"), []);
@@ -76,8 +73,6 @@ export default function ArcMarketView({ chain = "arc", kind, marketId }: { chain
   const now = useNowSec(15_000);
   const wide = useWide();
   const [sheet, setSheet] = useState(false);
-  // Which leg of a linked market the stake box works on (this page's own by default).
-  const [stakeChain, setStakeChain] = useState<MarketChainId>(chain);
   const me = address?.toLowerCase() ?? null;
 
   if (m === undefined) {
@@ -104,16 +99,6 @@ export default function ArcMarketView({ chain = "arc", kind, marketId }: { chain
   const pct = shareA(m);
   const sideName = (s: number) => (s === 1 ? m.labelA : s === 2 ? m.labelB : s === 3 ? "Draw" : "Unresolvable");
   const mine = me ? m.positions.filter((p) => p.user === me) : [];
-  const contract = marketContract(cfg, kind);
-  const linked = (m.linked ?? []).filter((l) => MARKET_CHAINS.chains[l.chain].enabled);
-  const legs: Leg[] = linked.length
-    ? [{ chain, kind, marketId: m.marketId, status: m.status, stakeA: m.stakeA, stakeB: m.stakeB, volumeUsd: m.volumeUsd, participants: m.participants, deadline: m.deadline, lockAt: m.lockAt }, ...linked]
-        .sort((a, b) => MARKET_CHAINS.enabled.indexOf(a.chain) - MARKET_CHAINS.enabled.indexOf(b.chain))
-    : [];
-  const pickedLeg = legs.find((l) => l.chain === stakeChain && l.chain !== chain) ?? null;
-  // Open while any leg takes stakes: the box can switch to the leg that still does.
-  const anyOpen = phase === "open" || legs.some((l) => arcPhase({ status: l.status, deadline: l.deadline ?? 0, lockAt: l.lockAt }, now) === "open");
-  const switcher = legs.length > 1 ? <StakeChainSwitch legs={legs} picked={stakeChain} onPick={setStakeChain} /> : null;
 
   return (
     <div className="mx-auto grid w-full min-w-0 max-w-[1040px] grid-cols-[minmax(0,1fr)] gap-6 lg:grid-cols-[minmax(0,1fr)_340px] lg:gap-8">
@@ -132,7 +117,6 @@ export default function ArcMarketView({ chain = "arc", kind, marketId }: { chain
             </span>
           </p>
           <h1 className="m-0 font-display text-[clamp(1.8rem,4vw,2.6rem)] leading-[1.05] text-cream [text-wrap:pretty]">{m.question}</h1>
-          {legs.length > 1 ? <LegsCompare legs={legs} current={chain} picked={stakeChain} onPick={setStakeChain} labelA={m.labelA} labelB={m.labelB} now={now} /> : null}
           {fresh ? null : <ShareMarket chain={chain} kind={kind} marketId={m.marketId} question={m.question} isPrivate={m.isPrivate} />}
         </header>
 
@@ -186,7 +170,7 @@ export default function ArcMarketView({ chain = "arc", kind, marketId }: { chain
           Settlement cutoff: {new Date(m.settlementCutoff! * 1000).toLocaleString("en-US")}. Deposits at or after this time receive only their net principal back; earlier deposits compete for winnings. Entry fees remain charged.
           {m.eligibleA !== undefined && m.eligibleB !== undefined ? <> Eligible stakes: {m.labelA} {usd(m.eligibleA)} · {m.labelB} {usd(m.eligibleB)}. The totals above show all deposits.</> : null}
         </p> : null}
-        <FollowButton target={chain === "arc" ? `market:${kind}:${marketId}` : `market:${chain}:${kind}:${marketId}`} label="Follow market updates" />
+        <FollowButton target={`market:${chain}:${kind}:${marketId}`} label="Follow market updates" />
         <SettlementTimeline market={m} events={m.events} now={now} />
         <section aria-label="Who is in" className={`${SURFACE} grid gap-3 p-5`}>
           <h2 className="m-0 text-[15px] text-cream">Who is in</h2>
@@ -211,14 +195,10 @@ export default function ArcMarketView({ chain = "arc", kind, marketId }: { chain
             ) : (
               <span className="break-all">{m.resolutionUrl}</span>
             )}
-            {contract ? (
-              <>
-                {" · "}
-                <a href={explorerUrl(cfg, "address", contract)} target="_blank" rel="noreferrer" className="text-coral hover:underline">
-                  contract
-                </a>
-              </>
-            ) : null}
+            {" · "}
+            <a href={marketRealmUrl(cfg, kind, m.marketId)} target="_blank" rel="noreferrer" className="text-coral hover:underline">
+              on {cfg.explorerName}
+            </a>
           </p>
         </section>
         <ArcCouncilTakes chain={chain} kind={kind} marketId={m.marketId} labelA={m.labelA} labelB={m.labelB} />
@@ -228,9 +208,9 @@ export default function ArcMarketView({ chain = "arc", kind, marketId }: { chain
         </section>
       </div>
 
-      {anyOpen && !wide ? (
+      {phase === "open" && !wide ? (
         <>
-          {pickedLeg ? null : <ArcMarketActions m={m} mine={mine} account={account} now={now} />}
+          <ArcMarketActions m={m} mine={mine} account={account} now={now} />
           {/* Keeps the last section clear of the sticky stake button. */}
           <div aria-hidden className="h-16" />
           <div className="fixed inset-x-0 bottom-[var(--tab-bar)] z-50 px-[var(--gut)] pb-2.5 pt-2">
@@ -240,31 +220,27 @@ export default function ArcMarketView({ chain = "arc", kind, marketId }: { chain
           </div>
           <Modal open={sheet} onClose={() => setSheet(false)} title={kind === "vs" ? "Challenge" : "Take a side"} variant="sheet">
             <div className="grid gap-3">
-              {switcher}
-              {pickedLeg ? <LegStakeBox leg={pickedLeg} now={now} inSheet /> : phase === "open" ? <ArcStakePanel m={m} mine={mine} account={account} inSheet /> : <p className="m-0 text-[14px] text-muted">{PHASE_LABEL[phase]} on {cfg.label}.</p>}
+              <ArcStakePanel m={m} mine={mine} account={account} inSheet />
             </div>
           </Modal>
         </>
       ) : (
       <aside aria-label="Stake" className={`${SURFACE} grid h-fit gap-4 p-5 lg:sticky lg:top-[96px]`}>
-        {switcher}
-        {pickedLeg ? (
-          <LegStakeBox leg={pickedLeg} now={now} />
-        ) : phase === "open" ? (
+        {phase === "open" ? (
           <ArcStakePanel m={m} mine={mine} account={account} />
         ) : (
           <div className="grid gap-2">
             <h2 className="m-0 font-display text-[1.4rem] leading-none text-cream">{PHASE_LABEL[phase]}</h2>
             <p className="m-0 text-[14px] leading-relaxed text-muted">
               {phase === "resolved" || phase === "cancelled"
-                ? `Payouts go straight to the winners' wallets on ${cfg.label}.`
+                ? `Payouts go to the winners' accounts on ${cfg.label}.`
                 : phase === "disputed" && m.vetoed
                   ? "The owner vetoed the proposed result; the arbiter rules on it. If no ruling comes, every stake is refunded."
                   : "Staking has closed. The oracle proposes a result, then anyone may dispute it before it settles."}
             </p>
           </div>
         )}
-        {pickedLeg ? null : <ArcMarketActions m={m} mine={mine} account={account} now={now} />}
+        <ArcMarketActions m={m} mine={mine} account={account} now={now} />
       </aside>
       )}
     </div>

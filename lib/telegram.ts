@@ -54,7 +54,7 @@ export function esc(text: string): string {
 }
 
 export const WELCOME_TEXT = [
-  "<b>Welcome to Mimir</b>, the AI-settled prediction market on Arc.",
+  "<b>Welcome to Mimir</b>, the AI-settled prediction market on gno.land.",
   "",
   "Link your wallet and I will message you when:",
   "• a new market opens",
@@ -163,6 +163,6 @@ export function marketUrlButton(url: string) {
   return { inline_keyboard: [[{ text: "Open market", web_app: { url } }]] };
 }
 
-/** An Arc market page. */
-export const arcMarketUrl = (kind: "vs" | "pool", id: number, chain: "arc" | "base" = "arc") => `${SITE_URL}/en/arena/${chain}/${kind}/${id}`;
+/** A market page. */
+export const arcMarketUrl = (kind: "vs" | "pool", id: number, chain: "gno" = "gno") => `${SITE_URL}/en/arena/${chain}/${kind}/${id}`;
 

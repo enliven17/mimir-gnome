@@ -7,7 +7,7 @@ import { betCardUrl, betLink, parseBetRef } from "@/lib/bet-share";
 import { arcMarketDetail } from "@/lib/server/arc-index";
 import { marketPath } from "@/lib/chains/links";
 
-/* /b/<ref>?side=N (<kind>-<id> on Arc, base-<kind>-<id> on Base): where a shared bet lands (lib/bet-share.ts). Its X card is the bet image; the page shows
+/* /b/<ref>?side=N (<kind>-<id>): where a shared bet lands (lib/bet-share.ts). Its X card is the bet image; the page shows
  * the market and sends people to take a side. */
 
 type Props = { params: Promise<{ ref: string }>; searchParams: Promise<{ side?: string }> };

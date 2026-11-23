@@ -18,7 +18,7 @@ import { isPendingVerdict } from "@/lib/claim-status";
 
 interface ClaimRow {
   id: number;
-  chain?: "arc" | "base";
+  chain?: string;
   kind: "vs" | "pool";
   question: string;
   category: string;

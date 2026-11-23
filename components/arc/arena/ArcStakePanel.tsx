@@ -1,11 +1,12 @@
 "use client";
 
 /**
- * The stake box on a market (Base or Arc: the account is on the market's chain). VS: challenge the creator (you take side B),
+ * The stake box on a market (mUSD on gno.land). VS: challenge the creator (you take side B),
  * shown as "risk X, win at most Y" since every later challenger shrinks your
  * share. Pool: pick a side, shown as what it would return if it closed now.
  */
 import WalletFunding from "@/components/wallet/WalletFunding";
+import { ugnotToGnot } from "@/lib/chains/client";
 import { useEffect, useState } from "react";
 
 import Modal from "@/components/ui/Modal";
@@ -13,9 +14,8 @@ import { betCardUrl, betIntentUrl } from "@/lib/bet-share";
 
 import { Link } from "@/i18n/navigation";
 import { maxGrossFor, parseUsdc, poolQuote, readStakeLimits, stakeLimitBlocker, vsChallengeQuote, vsRoom, type StakeLimits } from "@/lib/arc/markets";
-import { floorToChain, toIndexUnits } from "@/lib/chains/amounts";
-import { chainPublicClient } from "@/lib/chains/client";
-import { explorerUrl, marketContract } from "@/lib/chains/registry";
+import { floorToChain } from "@/lib/chains/amounts";
+import { explorerUrl } from "@/lib/chains/registry";
 import AccountGate from "./AccountGate";
 import { BTN_PRIMARY, usd, usdFine, type ArcMarket } from "./shared";
 import type { useArcAccount } from "./useArcAccount";
@@ -37,29 +37,26 @@ export default function ArcStakePanel({
 }) {
   const { send, busy, error, last } = useArcSend(account);
   const cfg = account.chainConfig;
-  const MIN_STAKE_WEI = cfg.contracts.minStakeWei;
+  const MIN_STAKE_WEI = cfg.minStakeWei;
   const [amount, setAmount] = useState("1");
   const [side, setSide] = useState<1 | 2>(m.kind === "vs" ? 2 : 1);
   // After a stake goes through: the share sheet (lib/bet-share.ts), with the side and amount just staked.
   const [shared, setShared] = useState<{ side: 1 | 2; amount: string } | null>(null);
 
-  const contract = marketContract(cfg, m.kind);
   const restricted = m.kind === "vs" && m.isPrivate;
   const invitation = useClaimInvitation(cfg, m.marketId, account.address, restricted);
-  // Launch caps, the early lock and the pause, read live from the contract (the index can lag a block or two).
+  // Launch caps, the early lock and the pause, read live from the realm (the index can lag a block or two).
   const [limits, setLimits] = useState<StakeLimits | null>(null);
   useEffect(() => {
-    if (!contract) return;
     let live = true;
-    // The contract's caps are in its own units (6 dp on Base): scale them to index units like everything else here.
-    readStakeLimits(chainPublicClient(cfg), contract, m.marketId).then(
-      (l) => live && setLimits({ ...l, maxMarket: toIndexUnits(cfg, l.maxMarket), maxAccount: toIndexUnits(cfg, l.maxAccount) }),
+    readStakeLimits(m.kind, m.marketId, cfg.gno).then(
+      (l) => live && setLimits(l),
       () => {},
     );
     return () => {
       live = false;
     };
-  }, [contract, m.marketId, last, cfg]);
+  }, [m.kind, m.marketId, last, cfg]);
   const stake = parseUsdc(amount);
   const a = BigInt(m.stakeA);
   const b = BigInt(m.stakeB);
@@ -83,7 +80,7 @@ export default function ArcStakePanel({
   else if (restricted && invitation.allowed === null) blocker = "Checking this wallet's approval…";
   else if (restricted && !invitation.allowed) blocker = "The creator has not approved this wallet to join this private claim.";
   else if (room === 0n) blocker = "This market is full: challengers can stake at most 5× the creator's stake.";
-  else if (stake === null) blocker = "Enter an amount in USDC.";
+  else if (stake === null) blocker = `Enter an amount in ${cfg.token.symbol}.`;
   else if (stake < MIN_STAKE_WEI) blocker = `The minimum stake is ${usd(MIN_STAKE_WEI)}.`;
   else if (room !== null && stake > room) blocker = `At most ${usd(room)} more fits in this market.`;
   else if (limits) {
@@ -92,10 +89,10 @@ export default function ArcStakePanel({
     blocker = stakeLimitBlocker(limits, { kind: m.kind, gross: stake, entryBps: bps, mine: mineNet, total: a + b, now }, usd);
   }
   if (!blocker && account.balance !== null && stake !== null && stake > account.balance) blocker = "not-enough";
-  if (!blocker && cfg.gas.symbol === "ETH" && account.gas === 0n) blocker = `Your wallet needs a little ETH on ${cfg.label} for gas.`;
+  if (!blocker && account.gas === 0n) blocker = `Your wallet needs a little ${cfg.gas.symbol} for gas.`;
 
   const onStake = async () => {
-    if (!contract || stake === null || blocker) return;
+    if (stake === null || blocker) return;
     if (restricted && !(await invitation.checkNow())) return;
     if (await send({ type: "stake", kind: m.kind, marketId: m.marketId, stake, side: m.kind === "vs" ? 2 : side })) {
       void account.reload();
@@ -129,7 +126,7 @@ export default function ArcStakePanel({
         )}
 
         <label className="grid gap-1.5 text-[13px] text-muted">
-          Stake (USDC)
+          Stake ({cfg.token.symbol})
           <input
             inputMode="decimal"
             value={amount}
@@ -152,18 +149,16 @@ export default function ArcStakePanel({
         ) : null}
 
         <p className="m-0 text-[12px] text-dim">
-          {cfg.gas.symbol === "ETH"
-            ? `USDC on ${cfg.label}: ${account.balance === null ? "-" : usd(account.balance)} · gas in ETH${account.gas === null ? "" : ` (${(Number(account.gas) / 1e18).toFixed(5)} ETH)`}`
-            : `USDC on ${cfg.label}: ${account.balance === null ? "-" : usd(account.balance)} · gas is paid in USDC`}
+          {`${cfg.token.symbol} on ${cfg.label}: ${account.balance === null ? "-" : usd(account.balance)} · gas in ${cfg.gas.symbol}${account.gas === null ? "" : ` (${ugnotToGnot(account.gas).toFixed(3)} ${cfg.gas.symbol})`}`}
         </p>
 
         {blocker === "not-enough" ? (
-          <WalletFunding chain={cfg} address={account.address} />
+          <WalletFunding chain={cfg} address={account.address} onFunded={() => void account.reload()} />
         ) : (
           <>
             {blocker ? <p className="m-0 text-[13px] text-pending">{blocker}</p> : null}
-            <button className={BTN_PRIMARY} disabled={busy || Boolean(blocker) || !contract} onClick={() => void onStake()}>
-              {busy ? (cfg.usdc.kind === "erc20" ? "Confirm in your wallet (approve or sign, then stake)…" : "Confirm in your wallet…") : m.kind === "vs" ? `Challenge with ${stake ? usd(stake) : "-"}` : `Stake ${stake ? usd(stake) : "-"}`}
+            <button className={BTN_PRIMARY} disabled={busy || Boolean(blocker)} onClick={() => void onStake()}>
+              {busy ? "Confirm in Adena…" : m.kind === "vs" ? `Challenge with ${stake ? usd(stake) : "-"}` : `Stake ${stake ? usd(stake) : "-"}`}
             </button>
           </>
         )}

@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
 import { txErrorMessage } from "@/lib/tx-errors";
-import { arcExplorerUrl as explorerUrl } from "@/lib/arc/config";
+import { explorerUrl, MARKET_CHAINS } from "@/lib/chains/registry";
 
 /** Unix seconds, re-read every `intervalMs` so countdowns tick. */
 export function useNowSec(intervalMs = 1000): number {
@@ -44,5 +44,5 @@ export function shortKey(addr: string): string {
 }
 
 export function explorerTx(sig: string): string {
-  return explorerUrl("tx", sig);
+  return explorerUrl(MARKET_CHAINS.chains.gno, "tx", sig);
 }

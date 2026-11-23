@@ -3,24 +3,20 @@
 /**
  * /arena/create: open a VS market (the default: you back one side,
  * challengers take the other, up to 5× your stake) or a two-sided pool, in
- * one form, on the chain you pick (Base by default; each chain has its own
- * markets). Arc: one transaction creates and funds it. Base: a USDC permit
- * signature then one transaction for a pool, approve + create for VS; gas in
- * ETH. Then the market page.
+ * one form, on gno.land: one transaction approves the mUSD stake and creates
+ * the market (gas in GNOT). Then the market page.
  */
 import WalletFunding from "@/components/wallet/WalletFunding";
 import { useQuery } from "@/lib/convex-react";
 import { useEffect, useMemo, useState } from "react";
-import { parseEventLogs } from "viem";
 
 import { SURFACE } from "@/components/arena/surface";
 import { Link, useRouter } from "@/i18n/navigation";
 import { entryFeeOf, LOCK_SECONDS, parseUsdc, vsCreatorQuote, type ArcMarketKind } from "@/lib/arc/markets";
-import { ARC_POOL_ABI, ARC_V3_ABI } from "@/lib/chains/calls";
-import { chainPublicClient } from "@/lib/chains/client";
+import { ugnotToGnot } from "@/lib/chains/client";
+import { poolMarkets, vsClaims } from "@/lib/gno/reads";
 import { marketPath } from "@/lib/chains/links";
-import { explorerUrl, MARKET_CHAINS, marketContract, type MarketChainId } from "@/lib/chains/registry";
-import { ChainPicker } from "../NetworkLogos";
+import { explorerUrl, MARKET_CHAINS } from "@/lib/chains/registry";
 import { CATEGORIES } from "@/lib/constants";
 import { mentionsPastDay } from "@/lib/past-date";
 import { api } from "@/convex/_generated/api";
@@ -29,7 +25,6 @@ import { BTN_PRIMARY, KIND_LABEL, usd, usdFine } from "./shared";
 import { useArcAccount } from "./useArcAccount";
 import { useArcSend } from "./useArcSend";
 import { MARKET_SERIES, seriesDraft, seriesForMarket } from "@/lib/market-series";
-import { useClaimInvitation } from "./useClaimInvitation";
 import JsonRuleNotice from "./JsonRuleNotice";
 
 const FIELD = "w-full min-w-0 rounded-xl bg-ink-deep px-4 py-3 text-[15px] text-cream outline-none focus-visible:shadow-[inset_0_0_0_1px_rgb(255_81_72/.7)]";
@@ -66,15 +61,14 @@ const MARKETS_PER_DAY = 3;
 
 export default function ArcCreateForm() {
   const router = useRouter();
-  const [chain, setChain] = useState<MarketChainId>(MARKET_CHAINS.defaultChain);
+  const chain = MARKET_CHAINS.defaultChain;
   const account = useArcAccount(chain);
   const cfg = account.chainConfig;
-  const MIN_STAKE_WEI = cfg.contracts.minStakeWei;
+  const MIN_STAKE_WEI = cfg.minStakeWei;
   const { send, busy, error, last } = useArcSend(account);
   const [kind, setKind] = useState<ArcMarketKind>("vs");
   const [privateClaim, setPrivateClaim] = useState(false);
   const isPrivate = kind === "vs" && privateClaim;
-  const permissionSupport = useClaimInvitation(cfg, 0, account.address, isPrivate);
   const [openingError, setOpeningError] = useState<string | null>(null);
   const [question, setQuestion] = useState("");
   const [labelA, setLabelA] = useState("Yes");
@@ -93,13 +87,11 @@ export default function ArcCreateForm() {
   const stake = parseUsdc(amount);
   const deadlineSec = Math.floor(new Date(deadline).getTime() / 1000);
   const duplicate = seriesMarkets?.find((m) => m.kind === "pool" && m.deadline === deadlineSec && (m.status === "open" || m.status === "active") && seriesForMarket(m) === series);
-  const contract = marketContract(cfg, kind);
 
   const openedToday = useQuery(api.arc.openedToday, account.address ? { creator: account.address } : "skip");
   const problem = useMemo(() => {
     const now = Math.floor(Date.now() / 1000);
     if ((openedToday ?? 0) >= MARKETS_PER_DAY) return `You can open ${MARKETS_PER_DAY} markets a day. Take a side on an open one, or come back tomorrow.`;
-    if (isPrivate && account.address && !permissionSupport.checked) return permissionSupport.error ? "Wallet permissions are unavailable on this contract. Private creation is blocked." : "Checking wallet-permission support…";
     if (question.trim().length < 10) return "Write the question (at least 10 characters).";
     // A day that has already passed means the outcome is public: refuse it (lib/past-date.ts).
     if (mentionsPastDay(question, Date.now(), { includeToday: false })) return "The question names a day that has passed: its outcome is already known.";
@@ -108,13 +100,14 @@ export default function ArcCreateForm() {
     if (!Number.isFinite(deadlineSec) || deadlineSec < now + MIN_LEAD_SECONDS) return "Set the deadline at least 10 minutes from now.";
     if (stake === null || stake < MIN_STAKE_WEI) return `Stake at least ${usd(MIN_STAKE_WEI)}.`;
     if (account.balance !== null && stake > account.balance) return "not-enough";
-    if (cfg.gas.symbol === "ETH" && account.gas === 0n) return `Your wallet needs a little ETH on ${cfg.label} for gas.`;
+    if (account.gas === 0n) return `Your wallet needs a little ${cfg.gas.symbol} for gas.`;
     return null;
-  }, [question, labelA, labelB, url, deadlineSec, stake, account.balance, account.gas, openedToday, MIN_STAKE_WEI, cfg, isPrivate, account.address, permissionSupport.checked, permissionSupport.error]);
+  }, [question, labelA, labelB, url, deadlineSec, stake, account.balance, account.gas, openedToday, MIN_STAKE_WEI, cfg]);
 
   const onCreate = async () => {
-    if (problem || !contract || stake === null) return;
-    setStage(cfg.usdc.kind === "erc20" ? "Confirm in your wallet (approve or sign, then open)…" : "Confirm in your wallet…");
+    if (problem || stake === null || !account.address) return;
+    const creator = account.address;
+    setStage("Confirm in Adena…");
     const r = await send({
       type: "create",
       market: {
@@ -133,14 +126,14 @@ export default function ArcCreateForm() {
     if (!r) return setStage(null);
     setStage("Opening the market page…");
     try {
-    const receipt = await chainPublicClient(cfg).getTransactionReceipt({ hash: r.txHash });
-    const logs =
-      kind === "vs"
-        ? parseEventLogs({ abi: ARC_V3_ABI, logs: receipt.logs, eventName: "ClaimCreated" })
-        : parseEventLogs({ abi: ARC_POOL_ABI, logs: receipt.logs, eventName: "MarketCreated" });
-    const id = logs.find((l) => l.address.toLowerCase() === contract.toLowerCase())?.args.id;
-    if (id === undefined) throw new Error("market id not available yet");
-    router.push(`${marketPath(chain, kind, Number(id))}?new=1`);
+      // The realms list newest first: the new market is this account's, with this question, among the latest.
+      const q = question.trim();
+      const id =
+        kind === "vs"
+          ? (await vsClaims(0, 20, cfg.gno)).find((c) => c.creator === creator && c.question === q)?.id
+          : (await poolMarkets(0, 20, cfg.gno)).find((c) => c.creator === creator && c.question === q)?.id;
+      if (id === undefined) throw new Error("market id not available yet");
+      router.push(`${marketPath(chain, kind, id)}?new=1`);
     } catch {
       setStage("Creation confirmed");
       setOpeningError("Your creation transaction is confirmed, but the market details could not be loaded. Find the claim in the transaction below; do not create it again. Private claims stay closed until you approve wallets on their page.");
@@ -155,22 +148,6 @@ export default function ArcCreateForm() {
       </header>
 
       <section className={`${SURFACE} grid gap-5 p-5 sm:p-7`}>
-        {MARKET_CHAINS.enabled.length > 1 ? (
-          <div className="grid gap-1.5 text-[13px] text-muted">
-            <span>Network</span>
-            <ChainPicker
-              chains={MARKET_CHAINS.enabled}
-              value={chain}
-              onChange={setChain}
-              hint={(c) => (c === "base" ? "USDC on Base, gas in ETH" : "USDC on Arc, gas in USDC")}
-            />
-            <span className="text-[12px] text-dim">
-              {kind === "pool"
-                ? "Your pool opens on the network you pick; once it is checked, Mimir opens its twin on the other network (seeded with the minimum stake on your side) so anyone can stake on either. One verdict settles both."
-                : "A VS duel stays on the network you pick."}
-            </span>
-          </div>
-        ) : null}
         <details open={!!series} className="grid gap-3 rounded-xl bg-panel p-4"><summary className="cursor-pointer text-[14px] text-cream">Use a daily checkpoint template</summary>
           <div className="mt-3 grid gap-3"><label className="grid gap-1 text-[12px] text-muted">Series<select className={SELECT} value={series} onChange={(e) => setSeries(e.target.value)}><option value="">Choose a series</option>{MARKET_SERIES.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</select></label>
             <label className="grid gap-1 text-[12px] text-muted">USD threshold<input className={FIELD} type="number" min="0.000001" step="any" value={threshold} onChange={(e) => setThreshold(e.target.value)} /></label>
@@ -198,7 +175,7 @@ export default function ArcCreateForm() {
 
         {kind === "vs" ? <div className="grid gap-2 rounded-xl bg-panel p-4">
           <label className="flex items-start gap-3 text-[14px] text-cream"><input type="checkbox" checked={privateClaim} onChange={e => setPrivateClaim(e.target.checked)} className="mt-1 accent-coral" />Private · approved wallets only</label>
-          {isPrivate ? <p className="m-0 text-[13px] leading-relaxed text-muted">The claim starts closed to challengers. After creation, approve their wallet addresses on the claim page. Each approval change requires a wallet transaction. Claim details and transactions remain public.</p> : null}
+          {isPrivate ? <p className="m-0 text-[13px] leading-relaxed text-muted">The claim starts closed to challengers. After creation, approve their wallet addresses on the claim page. Each approval change requires a wallet transaction. Claim details and transactions remain public on gno.land.</p> : null}
         </div> : null}
 
         <div className="grid gap-1.5 rounded-xl bg-panel p-4 shadow-[inset_0_0_0_1px_rgb(255_81_72/.45)]">
@@ -273,7 +250,7 @@ export default function ArcCreateForm() {
 
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <label className="grid min-w-0 gap-1.5 text-[13px] text-muted">
-            Your stake (USDC)
+            Your stake ({cfg.token.symbol})
             <input inputMode="decimal" value={amount} onChange={(e) => setAmount(e.target.value)} className={`${FIELD} font-mono`} />
           </label>
           {kind === "pool" ? (
@@ -316,11 +293,11 @@ export default function ArcCreateForm() {
 
         <AccountGate account={account}>
           {problem === "not-enough" ? (
-            <WalletFunding chain={cfg} address={account.address} />
+            <WalletFunding chain={cfg} address={account.address} onFunded={() => void account.reload()} />
           ) : (
             <>
               {problem ? <p className="m-0 text-[13px] text-pending">{problem}</p> : null}
-              <button className={BTN_PRIMARY} disabled={busy || stage !== null || Boolean(problem) || !contract} onClick={() => void onCreate()}>
+              <button className={BTN_PRIMARY} disabled={busy || stage !== null || Boolean(problem)} onClick={() => void onCreate()}>
                 {stage ?? `Open with ${stake ? usd(stake) : "-"}`}
               </button>
             </>
@@ -328,9 +305,7 @@ export default function ArcCreateForm() {
           {error ? <p className="m-0 text-[13px] text-danger">{error}</p> : null}
           {openingError ? <p role="alert" className="m-0 text-[13px] text-pending">{openingError} {last ? <a href={explorerUrl(cfg, "tx", last.txHash)} target="_blank" rel="noreferrer" className="text-coral underline">View creation transaction</a> : null}</p> : null}
           <p className="m-0 text-[12px] text-dim">
-            {cfg.gas.symbol === "ETH"
-              ? `USDC on ${cfg.label}: ${account.balance === null ? "-" : usd(account.balance)} · gas is paid in ETH (${account.gas === null ? "-" : `${(Number(account.gas) / 1e18).toFixed(5)} ETH`})`
-              : `USDC on ${cfg.label}: ${account.balance === null ? "-" : usd(account.balance)} · gas is paid in USDC`}
+            {`${cfg.token.symbol} on ${cfg.label}: ${account.balance === null ? "-" : usd(account.balance)} · gas is paid in ${cfg.gas.symbol} (${account.gas === null ? "-" : `${ugnotToGnot(account.gas).toFixed(3)} ${cfg.gas.symbol}`})`}
           </p>
         </AccountGate>
       </section>

@@ -10,6 +10,7 @@ import { useLocale } from "next-intl";
 
 import { SITE_URL } from "@/lib/site";
 import { marketPath } from "@/lib/chains/links";
+import type { MarketChainId } from "@/lib/chains/registry";
 
 const PILL = "press inline-flex items-center gap-1.5 rounded-full bg-panel-raised px-3.5 py-2 text-[13px] text-cream hover:bg-panel";
 
@@ -19,7 +20,7 @@ export function marketShareText(question: string, fresh: boolean, isPrivate = fa
   return fresh ? `I just opened a market on Mimir: ${q} Take the other side 👇` : `${q} Pick a side on Mimir 👇`;
 }
 
-export default function ShareMarket({ chain = "arc", kind, marketId, question, fresh = false, isPrivate = false }: { chain?: "arc" | "base"; kind: "vs" | "pool"; marketId: number; question: string; fresh?: boolean; isPrivate?: boolean }) {
+export default function ShareMarket({ chain = "gno", kind, marketId, question, fresh = false, isPrivate = false }: { chain?: MarketChainId; kind: "vs" | "pool"; marketId: number; question: string; fresh?: boolean; isPrivate?: boolean }) {
   const url = `${SITE_URL}/${useLocale()}${marketPath(chain, kind, marketId)}`;
   const text = marketShareText(question, fresh, isPrivate);
   const [copied, setCopied] = useState(false);

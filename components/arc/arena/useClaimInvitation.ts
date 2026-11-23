@@ -1,26 +1,23 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { Address } from "viem";
 import { readClaimInvitation } from "@/lib/chains/invites";
-import { chainPublicClient } from "@/lib/chains/client";
 import type { MarketChain } from "@/lib/chains/registry";
 
 /** Live, fail-closed permissions. A stale read can never describe a different wallet/claim/chain. */
-export function useClaimInvitation(cfg: MarketChain, marketId: number, wallet: Address | null, enabled: boolean) {
-  const contract = cfg.contracts.mimirV3;
-  const key = enabled && contract && wallet ? `${cfg.id}:${cfg.chainId}:${contract.toLowerCase()}:${marketId}:${wallet.toLowerCase()}` : null;
+export function useClaimInvitation(cfg: MarketChain, marketId: number, wallet: string | null, enabled: boolean) {
+  const key = enabled && wallet && marketId > 0 ? `${cfg.id}:${cfg.chainId}:${cfg.realms.vs}:${marketId}:${wallet.toLowerCase()}` : null;
   const current = useRef(key);
   current.current = key;
   const sequence = useRef(0);
   const [state, setState] = useState<{ key: string; allowed: boolean | null; error: boolean } | null>(null);
 
   const checkNow = useCallback(async (): Promise<boolean> => {
-    if (!key || !contract || !wallet || current.current !== key) return false;
+    if (!key || !wallet || current.current !== key) return false;
     const request = ++sequence.current;
     setState({ key, allowed: null, error: false });
     try {
-      const allowed = await readClaimInvitation(chainPublicClient(cfg), contract, marketId, wallet);
+      const allowed = await readClaimInvitation(marketId, wallet, cfg.gno);
       if (current.current !== key || sequence.current !== request) return false;
       setState({ key, allowed, error: false });
       return allowed;
@@ -28,7 +25,7 @@ export function useClaimInvitation(cfg: MarketChain, marketId: number, wallet: A
       if (current.current === key && sequence.current === request) setState({ key, allowed: null, error: true });
       return false;
     }
-  }, [key, contract, wallet, cfg, marketId]);
+  }, [key, wallet, cfg, marketId]);
 
   useEffect(() => {
     if (!key) return;

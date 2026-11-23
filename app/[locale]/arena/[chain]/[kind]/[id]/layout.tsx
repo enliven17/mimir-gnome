@@ -21,17 +21,17 @@ async function load(chain: string, kind: string, id: string) {
 export async function generateMetadata({ params }: { params: Params }) {
   const { chain, kind, id } = await params;
   const m = await load(chain, kind, id);
-  const path = marketPath(isMarketChainId(chain) ? chain : "arc", kind as "vs" | "pool", id);
+  const path = marketPath("gno", kind as "vs" | "pool", id);
   if (!m) return pageMeta({ path, title: "Market · Mimir Markets", description: "A prediction market on Mimir.", index: false });
   const when = new Date(m.deadline * 1000).toUTCString().slice(5, 22);
   const state = m.phase === "resolved" ? "Settled" : m.phase === "cancelled" ? "Cancelled" : m.phase === "open" ? "Open" : "Settling";
   const meta = pageMeta({
     path,
     title: `${m.question.slice(0, 90)} · Mimir Markets`,
-    description: `${state} on ${marketChain(m.chain).label}. ${m.sideA.label}: ${m.sideA.usdc} USDC vs ${m.sideB.label}: ${m.sideB.usdc} USDC, ${m.participants} in. Deadline ${when} UTC.`.slice(0, 155),
+    description: `${state} on ${marketChain("gno").label}. ${m.sideA.label}: ${m.sideA.usdc} mUSD vs ${m.sideB.label}: ${m.sideB.usdc} mUSD, ${m.participants} in. Deadline ${when} UTC.`.slice(0, 155),
   });
   // The link preview is this market's own card (question, both sides, the pot), not the site card.
-  const image = { url: cardUrl("share", kind as CardKind, Number(id), undefined, undefined, m.chain), width: 1200, height: 630, alt: m.question.slice(0, 120) };
+  const image = { url: cardUrl("share", kind as CardKind, Number(id)), width: 1200, height: 630, alt: m.question.slice(0, 120) };
   return { ...meta, openGraph: { ...meta.openGraph, images: [image] }, twitter: { ...meta.twitter, images: [image] } };
 }
 

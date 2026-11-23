@@ -18,7 +18,7 @@ export async function generateMetadata({ params, searchParams }: { params: Param
   return { ...meta, openGraph: { ...meta.openGraph, images: [image] }, twitter: { ...meta.twitter, images: [image] } };
 }
 
-/** /arena/<chain>/<kind>/<id>: one market on Base or Arc (/arena/arc/... is every link from before Base). */
+/** /arena/gno/<kind>/<id>: one market on gno.land. */
 export default async function MarketPage({ params }: { params: Params }) {
   const { chain, kind, id } = await params;
   const marketId = Number(id);
