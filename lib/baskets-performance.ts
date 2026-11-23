@@ -5,23 +5,23 @@ import "server-only";
  *
  * A basket member is named by id (a council persona slug or a registered agent
  * id); the chain only knows wallets. This resolves ids to the wallets that
- * actually stake (a persona's Arc wallet, an agent's Arc operator), reads the
- * markets those wallets staked on from the Arc index, and hands the pure
+ * actually stake (a persona's gno.land wallet, an agent's operator), reads the
+ * markets those wallets staked on from the market index, and hands the pure
  * functions in lib/baskets.ts realized outcomes. Nothing here invents a
  * return: an agent that never settled anything contributes nothing.
  */
 import { store } from "@/lib/server/store";
-import { ARC } from "@/lib/arc/config";
+import { serverMarketChains } from "@/lib/chains/registry";
 import { normalizeOwner } from "@/lib/owner";
 import { arcClaimsChallengedBy, resolveArcAgentWallets } from "@/lib/server/arc-baskets";
 
-/** Baskets read Arc once its contracts are configured. */
-export const onArc = () => Boolean(ARC.contracts.mimirV3 && process.env.NEXT_PUBLIC_CONVEX_URL);
+/** Baskets read the market index once the market chain is enabled and Convex is set. */
+export const onArc = () => Boolean(serverMarketChains().enabled.length && process.env.NEXT_PUBLIC_CONVEX_URL);
 
-/** The address a follower stakes from: on Arc the follower's wallet itself (lowercased, as the index has it). */
+/** The address a follower stakes from: the follower's own gno.land address (lowercase, as the index has it). */
 export async function stakingAddressOf(follower: string | null): Promise<string | null> {
   if (!follower || !onArc()) return follower;
-  return normalizeOwner(follower)?.toLowerCase() ?? null;
+  return normalizeOwner(follower);
 }
 import { councilRoster } from "@/lib/server/council-roster";
 import { ST_ACTIVE, ST_OPEN, ST_RESOLVED } from "@/lib/market-codes";
@@ -36,7 +36,7 @@ import {
 
 /**
  * Map member ids to staking wallets. Personas resolve from the roster (their
- * Arc wallets), registered agents from the registry's operator wallet.
+ * gno.land wallets), registered agents from the registry's operator wallet.
  * An id that resolves to neither is dropped rather than guessed at.
  */
 export async function resolveAgentWallets(agentIds: string[]): Promise<Map<string, string>> {

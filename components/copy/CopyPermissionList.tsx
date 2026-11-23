@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * The follower's own permissions. Loading and revoking each take an EIP-191
+ * The follower's own permissions. Loading and revoking each take an Adena
  * signature over `followerProofMessage`, so nobody else can read a wallet's
  * limits or cancel its copies. Neither costs a fee.
  */

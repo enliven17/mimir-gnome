@@ -4,21 +4,18 @@
  * One basket: the replayed curve and the follow card first, then the open
  * signals to mirror and the legs behind disclosures.
  *
- * Following is a wallet signature (EIP-191) over `followMessage` (with signedAt, so it cannot be replayed). Mirroring
- * asks the API for one Arc stake call, checks it, and sends it from the follower's wallet. Mimir never signs for the
- * follower and never holds funds.
+ * Following is an Adena signature (SignArbitrary) over `followMessage` (with signedAt, so it cannot be replayed).
+ * Mirroring builds the challenge here (lib/gno/msgs.ts: the signal's VS claim, at most the signal's stake, the basket
+ * creator as referrer) and sends it from the follower's Adena account. Mimir never signs for the follower and never
+ * holds funds.
  *
  * The curve is an inline SVG sparkline rather than a chart library for one
  * line. The caveat under it is deliberate: it is a projection of settled
  * markets, not a record of anyone's money.
  */
-import { decodeFunctionData } from "viem";
 import { useArcAccount } from "@/components/arc/arena/useArcAccount";
-import { toIndexUnits } from "@/lib/chains/amounts";
-import { ERC20_ABI } from "@/lib/chains/client";
 import { arcArenaEnabled } from "@/components/arc/arena/enabled";
-import { ARC } from "@/lib/arc/config";
-import { MIMIR_V3_ABI } from "@/lib/arc/markets";
+import { isGnoAddress } from "@/lib/gno/config";
 import BasketCurve from "@/components/baskets/BasketCurve";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslations } from "next-intl";
@@ -91,9 +88,7 @@ function memberSeed(m: Pick<Member, "agentId" | "kind" | "wallet">): string {
 export default function BasketDetailClient({ basketId }: { basketId: string }) {
   const t = useTranslations("baskets");
   const { address, connected, signMessage } = useMimirWallet();
-  // One account per chain: a copy goes to the chain its signal is on (copies follow the leader's chain).
-  const arc = useArcAccount("arc");
-  const base = useArcAccount("base");
+  const account = useArcAccount("gno");
   const follower = address ?? null;
 
   const [data, setData] = useState<BasketDetail | null>(null);
@@ -177,49 +172,14 @@ export default function BasketDetailClient({ basketId }: { basketId: string }) {
     }
   }
 
-  /**
-   * Arc: the server returns one stake call; it is checked here before the wallet sends it (a challenge on this
-   * market, on MimirV3, for no more than the signal's stake).
-   */
-  async function mirrorOnArc(signal: MirrorSignal) {
-    const account = signal.chain === "base" ? base : arc;
-    const cfg = account.chainConfig;
+  /** The copy: a challenge on the signal's VS claim for the signal's suggested stake, from the follower's account. */
+  async function mirrorOnChain(signal: MirrorSignal) {
     if (!account.session) throw new Error("Connect your wallet first: copies are staked from it.");
-    const res = await fetch(`/api/baskets/${basketId}/mirror`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ follower, claimId: signal.claimId, chain: cfg.id }),
-    });
-    type Call = { to: string; data: `0x${string}`; value: string };
-    const payload = (await res.json().catch(() => ({}))) as { message?: string; call?: Call; calls?: Call[] };
-    const calls = payload.calls ?? (payload.call ? [payload.call] : []);
-    if (!res.ok || !calls.length) throw new Error(payload.message ?? t("failed"));
-    // Checked here before the wallet signs: at most one exact USDC approve to MimirV3 (Base), then a challenge on this
-    // market for no more than the signal's stake.
-    const cap = BigInt(signal.suggestedStakeUnits) * 1_000_000_000_000n;
-    const v3 = cfg.contracts.mimirV3?.toLowerCase();
-    const stake = calls[calls.length - 1];
-    const decoded = decodeFunctionData({ abi: MIMIR_V3_ABI, data: stake.data });
-    const amount = toIndexUnits(cfg, decoded.args[1] as bigint);
-    const approves = calls.slice(0, -1);
-    const approvesOk = approves.every((c) => {
-      if (cfg.usdc.kind !== "erc20" || c.to.toLowerCase() !== cfg.usdc.address.toLowerCase()) return false;
-      const a = decodeFunctionData({ abi: ERC20_ABI, data: c.data });
-      return a.functionName === "approve" && String(a.args[0]).toLowerCase() === v3 && toIndexUnits(cfg, a.args[1] as bigint) <= cap;
-    });
-    if (
-      approves.length > 1 ||
-      !approvesOk ||
-      stake.to.toLowerCase() !== v3 ||
-      decoded.functionName !== "challengeClaim" ||
-      decoded.args[0] !== BigInt(signal.claimId) ||
-      (cfg.usdc.kind === "native" && BigInt(stake.value) !== amount) ||
-      (cfg.usdc.kind === "erc20" && BigInt(stake.value) !== 0n) ||
-      amount > cap
-    ) {
-      throw new Error("The copy transaction did not match the signal; nothing was signed.");
-    }
-    const receipt = await account.session.sendCalls(calls.map((c) => ({ to: c.to as `0x${string}`, data: c.data, value: BigInt(c.value) })));
+    const stake = BigInt(signal.suggestedStakeUnits) * 1_000_000_000_000n;
+    if (stake <= 0n) throw new Error(t("failed"));
+    const creator = data?.basket.house ? null : data?.basket.creatorWallet?.toLowerCase() ?? null;
+    const referrer = creator && isGnoAddress(creator) && creator !== follower ? creator : undefined;
+    const receipt = await account.sendAction({ type: "stake", kind: "vs", marketId: signal.claimId, stake, side: 2, referrer });
     setNotice({ claimId: signal.claimId, text: t("mirrored", { sig: shortenAddress(receipt.txHash, 6) }) });
     void account.reload();
     loadSignals();
@@ -233,10 +193,10 @@ export default function BasketDetailClient({ basketId }: { basketId: string }) {
     setMirroring(signal.claimId);
     try {
       if (arcArenaEnabled) {
-        await mirrorOnArc(signal);
+        await mirrorOnChain(signal);
         return;
       }
-      throw new Error("Copies need Arc markets, which are not configured on this site.");
+      throw new Error("Copies need gno.land markets, which are not configured on this site.");
     } catch (err) {
       setError(err instanceof Error ? err.message : t("failed"));
     } finally {
@@ -458,7 +418,7 @@ export default function BasketDetailClient({ basketId }: { basketId: string }) {
                       </Button>
                     ) : (
                       <span className="font-mono text-[13px] tabular-nums text-muted">
-                        {formatUsdcUnitsBare(s.suggestedStakeUnits)} USDC
+                        {formatUsdcUnitsBare(s.suggestedStakeUnits)} mUSD
                       </span>
                     )}
                   </li>

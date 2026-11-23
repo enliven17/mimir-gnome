@@ -12,7 +12,9 @@ import { StatusPill } from "@/components/ui/StatusPill";
 import { formatUsdc } from "@/lib/money";
 import type { CopyPermissionView } from "@/lib/copy-client";
 import { COPY_CATEGORIES } from "@/lib/copy-form";
-import { arcExplorerUrl as explorerUrl } from "@/lib/arc/config";
+import { explorerUrl as chainExplorerUrl, MARKET_CHAINS } from "@/lib/chains/registry";
+
+const explorerUrl = (kind: "tx" | "address", id: string) => chainExplorerUrl(MARKET_CHAINS.chains.gno, kind, id);
 
 type PermissionStatus = "active" | "expired" | "revoked";
 

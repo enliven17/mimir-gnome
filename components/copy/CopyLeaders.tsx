@@ -17,7 +17,9 @@ import { SURFACE } from "@/components/arena/surface";
 import Button from "@/components/ui/Button";
 import PeepAvatar from "@/components/ui/PeepAvatar";
 import { shortenAddress } from "@/lib/constants";
-import { arcExplorerUrl as explorerUrl } from "@/lib/arc/config";
+import { explorerUrl as chainExplorerUrl, MARKET_CHAINS } from "@/lib/chains/registry";
+
+const explorerUrl = (kind: "tx" | "address", id: string) => chainExplorerUrl(MARKET_CHAINS.chains.gno, kind, id);
 
 export interface CopyLeader {
   slug: string;
