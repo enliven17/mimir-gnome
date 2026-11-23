@@ -128,7 +128,7 @@ test("share card: open asks to take a side, decided names the winner, refunded s
   const base = { kind: "pool" as const, marketId: 3, question: "Will it rain?", labelA: "Yes", labelB: "No", category: "weather", stakeA: "1000000000000000000", stakeB: "0", participants: 1, deadline: 2000, winner: 0, disputableUntil: 0 };
   const q = { type: "share" as const, kind: "pool" as const, id: 3, side: 0 as const };
   assert.equal(cardModel(q, base, 1000).headline, "Take a side");
-  assert.match(cardModel(q, base, 1000).detail, /Pot 1\.00 USDC/);
+  assert.match(cardModel(q, base, 1000).detail, /Pot 1\.00 mUSD/);
   assert.equal(cardModel(q, base, 3000).headline, "Settling");
   const won = cardModel(q, { ...base, winner: 2, disputableUntil: 2500 }, 3000);
   assert.equal(won.headline, "Settled");
