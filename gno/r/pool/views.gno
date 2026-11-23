@@ -7,12 +7,12 @@ import (
 )
 
 func MarketCount() int64          { return marketCount }
-func Owner() address              { return owner }
-func Arbiter() address            { return arbiter }
-func Oracle() address             { return oracle }
-func AuditAgent() address         { return auditAgent }
-func FeeRecipient() address       { return feeRecipient }
-func Paused() bool                { return paused }
+func Owner() address              { return roles.Owner }
+func Arbiter() address            { return roles.Arbiter }
+func Oracle() address             { return roles.Oracle }
+func AuditAgent() address         { return roles.AuditAgent }
+func FeeRecipient() address       { return roles.FeeRecipient }
+func Paused() bool                { return roles.Paused }
 func DisputeWindow() int64        { return disputeWindow }
 func AccruedFees(a address) int64 { return feesOf(a) }
 
@@ -53,19 +53,19 @@ func Claimable(id int64, user address) (payout, fee int64) {
 
 func ConfigJSON() string {
 	return "{" + strings.Join([]string{
-		kv("owner", mimir.Quote(owner.String())),
-		kv("arbiter", mimir.Quote(arbiter.String())),
-		kv("oracle", mimir.Quote(oracle.String())),
-		kv("auditAgent", mimir.Quote(auditAgent.String())),
-		kv("feeRecipient", mimir.Quote(feeRecipient.String())),
-		kv("paused", boolStr(paused)),
+		kv("owner", mimir.Quote(roles.Owner.String())),
+		kv("arbiter", mimir.Quote(roles.Arbiter.String())),
+		kv("oracle", mimir.Quote(roles.Oracle.String())),
+		kv("auditAgent", mimir.Quote(roles.AuditAgent.String())),
+		kv("feeRecipient", mimir.Quote(roles.FeeRecipient.String())),
+		kv("paused", boolStr(roles.Paused)),
 		kv("disputeWindow", itoa(disputeWindow)),
 		kv("minStake", itoa(MinStake)),
 		kv("disputeBond", itoa(DisputeBond)),
 		kv("lockSeconds", itoa(LockSeconds)),
 		kv("graceSeconds", itoa(ResolutionGraceSeconds)),
-		kv("maxMarketStake", itoa(maxMarketStake)),
-		kv("maxAccountStake", itoa(maxAccountStake)),
+		kv("maxMarketStake", itoa(roles.MaxMarketStake)),
+		kv("maxAccountStake", itoa(roles.MaxAccountStake)),
 		kv("marketCount", itoa(marketCount)),
 		kv("lifetimeFeesAccrued", itoa(lifetimeFeesAccrued)),
 		kv("lifetimeFeesClaimed", itoa(lifetimeFeesClaimed)),

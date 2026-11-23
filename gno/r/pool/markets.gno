@@ -65,7 +65,7 @@ func addStake(cur realm, m *Market, side int, referrer address, amount int64) {
 	fee := mimir.MulDiv(amount, bps, 10_000)
 	if fee != 0 {
 		m.EntryFees += fee
-		accrue(m.ID, feeRecipient, fee)
+		accrue(m.ID, roles.FeeRecipient, fee)
 	}
 	net := amount - fee
 	p := m.mustPosition(user)
@@ -90,9 +90,7 @@ func addStake(cur realm, m *Market, side int, referrer address, amount int64) {
 		emit("ReferrerSet", "id", itoa(m.ID), "user", user.String(), "referrer", referrer.String())
 	}
 	mine := p.A + p.B
-	if (maxAccountStake != 0 && mine > maxAccountStake) || (maxMarketStake != 0 && m.TotalA+m.TotalB > maxMarketStake) {
-		panic("CapExceeded")
-	}
+	roles.CheckCaps(mine, m.TotalA+m.TotalB)
 	m.history.Record(now(), mimir.Amounts{A: m.TotalA, B: m.TotalB})
 	p.history.Record(now(), mimir.Amounts{A: p.A, B: p.B, CopiedA: p.CopyA, CopiedB: p.CopyB})
 	emit("Staked", "id", itoa(m.ID), "user", user.String(), "side", itoa(int64(side)), "amount", itoa(net))

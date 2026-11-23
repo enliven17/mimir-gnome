@@ -51,7 +51,7 @@ func renderHome() string {
 	var b strings.Builder
 	b.WriteString("# Mimir pools\n\n")
 	b.WriteString("Claim markets that settle themselves. Stake mUSD on either side of a question; ")
-	b.WriteString("an AI oracle proposes the result after the deadline, anyone in the market can dispute it, ")
+	b.WriteString("an AI roles.Oracle proposes the result after the deadline, anyone in the market can dispute it, ")
 	b.WriteString("and draws or unclear questions refund everyone.\n\n")
 	b.WriteString(ufmt.Sprintf("%d markets · minimum stake %s mUSD · dispute bond %s mUSD · dispute window %d min\n\n",
 		marketCount, mimir.FormatUSD(MinStake), mimir.FormatUSD(DisputeBond), disputeWindow/60))
@@ -88,7 +88,7 @@ func renderMarket(m *Market) string {
 		b.WriteString(ufmt.Sprintf("\n## Proposed: %s\n\nDisputable until %s.\n\n> %s\n\nEvidence hash: `%s`\n",
 			outcomeName(m, m.Proposed), when(m.ProposedAt+disputeWindow), mimir.Escape(m.Summary), m.EvidenceHash))
 	case StDisputed:
-		b.WriteString(ufmt.Sprintf("\n## Disputed\n\nThe oracle proposed %s; the arbiter rules.\n\n> %s\n",
+		b.WriteString(ufmt.Sprintf("\n## Disputed\n\nThe roles.Oracle proposed %s; the roles.Arbiter rules.\n\n> %s\n",
 			outcomeName(m, m.Proposed), mimir.Escape(m.Summary)))
 	case StResolved:
 		b.WriteString(ufmt.Sprintf("\n## Result: %s\n\n> %s\n\nEvidence hash: `%s`\n",

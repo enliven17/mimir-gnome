@@ -85,7 +85,6 @@ const (
 	MaxEntryBps            = int64(100)
 	ReferrerFeeBps         = int64(100)
 	CopyFeeBps             = int64(100)
-	TimelockSeconds        = int64(2 * 24 * 60 * 60)
 	ResolutionGraceSeconds = int64(7 * 24 * 60 * 60)
 	MaxDisputeWindow       = int64(7 * 24 * 60 * 60)
 	// On mainnet a proposal stays disputable at least this long.
@@ -148,36 +147,16 @@ var (
 	lifetimeFeesAccrued int64
 	lifetimeFeesClaimed int64
 
-	owner               address
-	arbiter             address
-	auditAgent          address
-	pendingOwner        address
-	pendingOwnerEta     int64
-	oracle              address
-	pendingOracle       address
-	pendingOracleEta    int64
-	paused              bool
-	maxAccountStake     int64
-	maxMarketStake      int64
-	feeRecipient        address
-	pendingFeeRecipient address
-	pendingFeeEta       int64
-	disputeWindow       int64
+	roles         *mimir.Roles
+	disputeWindow int64
 )
 
 func init(cur realm) {
-	owner = Deployer
-	arbiter = InitialArbiter
-	oracle = InitialOracle
-	feeRecipient = Deployer
+	roles = mimir.NewRoles(Deployer, InitialArbiter, InitialOracle, Deployer)
 	disputeWindow = TestnetDisputeWindow
 	if runtime.ChainID() == "gnoland-1" {
 		disputeWindow = MinLiveDisputeWindow
 	}
-	emit("OwnershipTransferred", "previous", "", "next", owner.String())
-	emit("ArbiterChanged", "previous", "", "next", arbiter.String())
-	emit("OracleChanged", "previous", "", "next", oracle.String())
-	emit("FeeRecipientChanged", "previous", "", "next", feeRecipient.String())
 }
 
 func now() int64 { return time.Now().Unix() }
@@ -245,27 +224,10 @@ func push(cur realm, to address, amount int64) {
 
 func caller(cur realm) address { return cur.Previous().Address() }
 
-func assertOwner(cur realm) {
-	if caller(cur) != owner {
-		panic("NotOwner")
-	}
-}
+func assertOwner(cur realm) { roles.AssertOwner(caller(cur)) }
 
-func assertNotPaused() {
-	if paused {
-		panic("IsPaused")
-	}
-}
+func assertNotPaused() { roles.AssertNotPaused() }
 
-func parseReferrer(s string) address {
-	if s == "" {
-		return ""
-	}
-	a := address(s)
-	if !a.IsValid() {
-		panic("BadReferrer")
-	}
-	return a
-}
+func parseReferrer(s string) address { return mimir.ParseOptional(s) }
 
 func entryBps(a address) int64 { return fees.EntryBps(a) }

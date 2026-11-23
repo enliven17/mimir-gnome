@@ -63,7 +63,7 @@ func copyFees(user address, p *Position, feeBase int64) (toRef, toPlatform int64
 		return 0, 0
 	}
 	toRef = mimir.MulDiv(feeBase, ReferrerFeeBps, 10_000)
-	if feeRecipient != user {
+	if roles.FeeRecipient != user {
 		toPlatform = mimir.MulDiv(feeBase, CopyFeeBps, 10_000)
 	}
 	return toRef, toPlatform
@@ -86,7 +86,7 @@ func claimFor(cur realm, id int64, user address) {
 	}
 	p := m.position(user)
 	// Paused: refunds still go out; a winner waits for the unpause.
-	if paused && winnerPayout(m, p) {
+	if roles.Paused && winnerPayout(m, p) {
 		panic("IsPaused")
 	}
 	if p != nil && p.Claimed {
@@ -102,7 +102,7 @@ func claimFor(cur realm, id int64, user address) {
 		accrue(id, p.Referrer, toRef)
 	}
 	if toPlatform != 0 {
-		accrue(id, feeRecipient, toPlatform)
+		accrue(id, roles.FeeRecipient, toPlatform)
 	}
 	fee := toRef + toPlatform
 	emit("Claimed", "id", itoa(id), "user", user.String(), "paid", itoa(gross-fee), "fee", itoa(fee))

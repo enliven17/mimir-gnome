@@ -53,9 +53,7 @@ func ResolveWithCutoff(cur realm, id int64, outcome int, summary, evidenceHash s
 
 func resolve(cur realm, id int64, outcome int, summary, evidenceHash string, cutoff int64) {
 	assertNotPaused()
-	if oracle == "" || caller(cur) != oracle {
-		panic("NotOracle")
-	}
+	roles.AssertOracle(caller(cur))
 	m := getMarket(id)
 	if m.State != StOpen {
 		panic("NotOpen")
@@ -95,7 +93,7 @@ func Dispute(cur realm, id int64) {
 	c := caller(cur)
 	p := m.position(c)
 	staked := p != nil && (p.A != 0 || p.B != 0)
-	if !staked && (auditAgent == "" || c != auditAgent) && c != arbiter {
+	if !staked && (roles.AuditAgent == "" || c != roles.AuditAgent) && c != roles.Arbiter {
 		panic("NotParticipant")
 	}
 	pull(cur, c, DisputeBond)
@@ -148,9 +146,7 @@ func ResolveDisputeWithCutoff(cur realm, id int64, outcome int, summary, evidenc
 
 func resolveDispute(cur realm, m *Market, outcome int, summary, evidenceHash string, cutoff int64) {
 	assertNotPaused()
-	if caller(cur) != arbiter {
-		panic("NotArbiter")
-	}
+	roles.AssertArbiter(caller(cur))
 	if m.State != StDisputed {
 		panic("NotDisputed")
 	}
@@ -175,14 +171,14 @@ func resolveDispute(cur realm, m *Market, outcome int, summary, evidenceHash str
 func RefundExpired(cur realm, id int64) {
 	m := getMarket(id)
 	disputed := m.State == StDisputed
-	if !disputed && m.State != StOpen && !(paused && m.State == StProposed) {
+	if !disputed && m.State != StOpen && !(roles.Paused && m.State == StProposed) {
 		panic("NotOpen")
 	}
 	if now() < refundAt(m) {
 		panic("GraceNotOver")
 	}
 	switch {
-	case disputed && !paused && m.Disputer != "":
+	case disputed && !roles.Paused && m.Disputer != "":
 		emit("DisputeResolved", "id", itoa(id), "outcome", itoa(int64(m.Proposed)), "disputerRight", "false")
 		settle(m, m.Proposed, m.Summary, m.EvidenceHash)
 		settleBond(cur, m, false)
@@ -213,7 +209,7 @@ func settleBond(cur realm, m *Market, returnIt bool) {
 	if returnIt {
 		push(cur, m.Disputer, bond)
 	} else {
-		accrue(m.ID, feeRecipient, bond)
+		accrue(m.ID, roles.FeeRecipient, bond)
 	}
 }
 

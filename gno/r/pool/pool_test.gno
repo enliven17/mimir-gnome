@@ -4,6 +4,7 @@ import (
 	"chain"
 	"testing"
 
+	mimir "gno.land/p/g12dcsmwccgdxasqde2eumua88tlrkw83kqf6tcz/mimir"
 	"gno.land/p/nt/testutils/v0"
 	"gno.land/p/nt/uassert/v0"
 	"gno.land/r/g12dcsmwccgdxasqde2eumua88tlrkw83kqf6tcz/musd"
@@ -298,7 +299,7 @@ func TestRolesAndTimelocks(cur realm, t *testing.T) {
 	uassert.AbortsContains(t, cur, "Timelocked", func() { ExecuteOracle(cross(cur)) })
 	RevokeOracle(cross(cur))
 	uassert.Equal(t, address(""), Oracle())
-	skip(TimelockSeconds)
+	skip(mimir.TimelockSeconds)
 	testing.SetRealm(testing.NewUserRealm(bob))
 	ExecuteOracle(cross(cur)) // permissionless once due
 	uassert.Equal(t, dave, Oracle())
@@ -306,7 +307,7 @@ func TestRolesAndTimelocks(cur realm, t *testing.T) {
 	// Restore the oracle for later tests.
 	testing.SetRealm(testing.NewUserRealm(Deployer))
 	QueueOracle(cross(cur), InitialOracle)
-	skip(TimelockSeconds)
+	skip(mimir.TimelockSeconds)
 	ExecuteOracle(cross(cur))
 	SetAuditAgent(cross(cur), "")
 }
