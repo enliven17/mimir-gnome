@@ -1,5 +1,4 @@
 /** Independent evidence review and a deliberately limited bonded-dispute state machine. */
-import type { Address, Hex } from "viem";
 import { callLLMWithMeta, extractJson, type CallLLMOptions } from "../../lib/llm";
 import { fetchEvidence } from "../../lib/server/evidence-fetcher";
 import { INJECTION_GUARD, fenceUntrusted } from "../../lib/prompt-safety";
@@ -7,10 +6,11 @@ import { stripResolverFragment } from "../../lib/resolver-spec";
 import { auditOpenAIConfig, callAuditOpenAI } from "./openai-compat";
 
 export interface AuditProposal {
-  chainId: number; contract: Address; kind: "vs" | "pool"; marketId: string;
+  /** gno chain id and realm path, e.g. "onyx-1", "gno.land/r/<ns>/pool". */
+  chainId: string; contract: string; kind: "vs" | "pool"; marketId: string;
   proposedAt: number; disputableUntil: number; now: number; live: boolean;
   cutoff?: number;
-  side: number; evidenceHash: Hex; question: string; labelA: string; labelB: string;
+  side: number; evidenceHash: string; question: string; labelA: string; labelB: string;
   resolutionUrl: string; category: string; deadline: number; createdAt: number; summary: string;
 }
 export interface AuditReview {
@@ -21,24 +21,25 @@ export interface AuditReview {
 export interface AuditJob {
   proposal: AuditProposal;
   status: "pending" | "observed" | "agreed" | "submitted" | "challenged" | "closed" | "expired" | "stale";
-  review?: AuditReview; reviewKey?: string; txHash?: Hex; approvalTxHash?: Hex;
+  review?: AuditReview; reviewKey?: string; txHash?: string;
   error?: string; nextTry?: number;
 }
 export interface AuditRoles { auditAgent: string; owner: string; arbiter: string; oracle: string; feeRecipient: string }
 export interface AuditIO {
-  account?: Address; mode: "observe" | "challenge";
+  /** The audit agent's g1 address. */
+  account?: string; mode: "observe" | "challenge";
   load(): Promise<AuditProposal>; roles(): Promise<AuditRoles>;
   review(p: AuditProposal): Promise<AuditReview | null>; prepareBond(): Promise<void>;
-  submit(): Promise<Hex>; receipt(hash: Hex): Promise<"success" | "reverted" | null>;
+  submit(): Promise<string>; receipt(hash: string): Promise<"success" | "reverted" | null>;
   save(job: AuditJob): Promise<void>;
 }
 
 export function proposalKey(p: AuditProposal): string {
   return JSON.stringify([p.chainId, p.contract.toLowerCase(), p.kind, p.marketId, p.proposedAt, p.side, p.evidenceHash.toLowerCase(), p.question, p.labelA, p.labelB, p.resolutionUrl, p.deadline, p.createdAt, p.summary, p.cutoff]);
 }
-export const isAuditReceiptJob = (job: AuditJob) => Boolean(job.txHash || job.approvalTxHash);
+export const isAuditReceiptJob = (job: AuditJob) => Boolean(job.txHash);
 export function auditQueue(jobs: AuditJob[], mode: AuditIO["mode"], now: number): AuditJob[] {
-  return jobs.filter(j => (["pending", "submitted", "challenged", ...(mode === "challenge" ? ["observed"] : [])].includes(j.status) || j.approvalTxHash) && (j.nextTry ?? 0) <= now)
+  return jobs.filter(j => (["pending", "submitted", "challenged", ...(mode === "challenge" ? ["observed"] : [])].includes(j.status)) && (j.nextTry ?? 0) <= now)
     .sort((a, b) => (a.nextTry ?? 0) - (b.nextTry ?? 0) || a.proposal.disputableUntil - b.proposal.disputableUntil);
 }
 export function auditAction(p: AuditProposal, review: AuditReview): "challenge" | "agree" | "retry" {
@@ -47,7 +48,7 @@ export function auditAction(p: AuditProposal, review: AuditReview): "challenge" 
   if (cutoffMatters && p.cutoff !== undefined && (!Number.isSafeInteger(review.cutoff) || review.cutoff! < 0 || review.cutoff! > p.now)) return "retry";
   return review.side === p.side && (!cutoffMatters || p.cutoff === undefined || review.cutoff === p.cutoff) ? "agree" : "challenge";
 }
-export function assertAuditRoles(account: Address | undefined, roles: AuditRoles) {
+export function assertAuditRoles(account: string | undefined, roles: AuditRoles) {
   const who = account?.toLowerCase();
   if (!who || who !== roles.auditAgent.toLowerCase() || [roles.owner, roles.arbiter, roles.oracle, roles.feeRecipient].some(a => a.toLowerCase() === who)) {
     throw new Error("Audit signing account must match the registered audit role and be separate from privileged roles");
@@ -86,12 +87,6 @@ Return only JSON: {"knownAt":"ISO-8601 UTC time or empty string","verdict":"CREA
 
 /** An audit can only submit the existing bonded dispute, never a ruling/veto/payout. */
 export async function processAuditProposal(job: AuditJob, io: AuditIO): Promise<void> {
-  if (job.approvalTxHash) {
-    const receipt = await io.receipt(job.approvalTxHash);
-    if (!receipt) return;
-    delete job.approvalTxHash;await io.save(job);
-    if (receipt === "reverted") throw Error("Audit bond approval reverted");
-  }
   if (job.txHash) {
     const receipt = await io.receipt(job.txHash);
     if (!receipt) {
@@ -134,7 +129,7 @@ export async function processAuditProposal(job: AuditJob, io: AuditIO): Promise<
   await io.save(job);
   if (action !== "challenge" || io.mode === "observe") return;
   p = await current();if (!p) return;
-  await io.prepareBond(); // ERC20 approval may take a block; never rely on the earlier state afterwards.
+  await io.prepareBond(); // Bond/gas checks are reads; recheck the proposal right before signing anyway.
   p = await current();if (!p) return;
   job.txHash = await io.submit();job.status = "submitted";
   await io.save(job);

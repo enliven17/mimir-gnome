@@ -1,58 +1,114 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { auditAction, proposalKey, processAuditProposal, reviewProposal, auditQueue, isAuditReceiptJob, type AuditProposal, type AuditJob, type AuditIO } from "../../agents/audit/review";
-import { auditDisputeCall, loadAuditProposal, auditIO } from "../../agents/audit/chain";
-import { marketChains } from "../../lib/chains/registry";
-import { decodeFunctionData, parseAbi, type PublicClient, type WalletClient } from "viem";
-import { privateKeyToAccount } from "viem/accounts";
+import { auditDisputeMessages, loadAuditProposal, auditIO, type AuditChain, type AuditReads } from "../../agents/audit/chain";
+import { gnoConfig } from "../../lib/gno/config";
+import { realmAddress } from "../../lib/gno/address";
+import { DISPUTE_BOND_WEI, type GnoMsgCall } from "../../lib/gno/msgs";
+import type { MarketConfig, PoolMarket, VsClaim } from "../../lib/gno/reads";
 import { spawnSync } from "node:child_process";
 
-test("standalone auditor prints reviewed owner setup transactions without broadcasting", () => {
-  const result = spawnSync(process.execPath, ["--import", "tsx", "agents/audit/run.ts", "--print-setup"], { cwd: process.cwd(), encoding: "utf8", env: { PATH: process.env.PATH, NODE_ENV: "test", AUDIT_AGENT_ADDRESS: "0x00000000000000000000000000000000000000a1", MARKET_CHAINS: "base", BASE_NETWORK: "sepolia", MIMIR_BASE_V3_ADDRESS: "0x0000000000000000000000000000000000000001", MIMIR_BASE_POOL_ADDRESS: "0x0000000000000000000000000000000000000002", MIMIR_BASE_FROM_BLOCK: "10" } });
+const cfg = gnoConfig(() => undefined);
+const account = "g1v9kxjcm9ta047h6lta047h6lta047h6lzd40gh";
+const other = "g15s5wce4jrntmlvwww3ct84xfxdavtvfrm3sz6x";
+const hash = "1".repeat(64);
+const childEnv = (extra: Record<string, string>): NodeJS.ProcessEnv => ({ PATH: process.env.PATH, SystemRoot: process.env.SystemRoot, NODE_ENV: "test", ...extra });
+
+test("standalone auditor prints reviewed owner setup messages without broadcasting", () => {
+  const result = spawnSync(process.execPath, ["--import", "tsx", "agents/audit/run.ts", "--print-setup"], { cwd: process.cwd(), encoding: "utf8", env: childEnv({ AUDIT_AGENT_ADDRESS: account }) });
   assert.equal(result.status, 0, result.stderr);
   const setup = JSON.parse(result.stdout);
-  assert.equal(setup.broadcast, false);assert.equal(setup.calls.length, 2);
-  for (const call of setup.calls) {
-    assert.equal(call.value, "0");
-    const decoded = decodeFunctionData({ abi: parseAbi(["function setAuditAgent(address)"]), data: call.data });
-    assert.equal(decoded.args?.[0].toLowerCase(), "0x00000000000000000000000000000000000000a1");
-  }
+  assert.equal(setup.broadcast, false);assert.equal(setup.auditAgent, account);
+  assert.deepEqual(setup.messages.map((m: GnoMsgCall) => [m.type, m.value.pkg_path, m.value.func, m.value.args, m.value.send]), [
+    ["/vm.m_call", cfg.realms.vs, "SetAuditAgent", [account], ""],
+    ["/vm.m_call", cfg.realms.pool, "SetAuditAgent", [account], ""],
+  ]);
+  const bad = spawnSync(process.execPath, ["--import", "tsx", "agents/audit/run.ts", "--print-setup"], { cwd: process.cwd(), encoding: "utf8", env: childEnv({ AUDIT_AGENT_ADDRESS: "0x00000000000000000000000000000000000000a1" }) });
+  assert.notEqual(bad.status, 0);assert.match(bad.stderr, /g1 address/);
 });
 
-const account = "0x00000000000000000000000000000000000000a1" as const;
-const other = "0x00000000000000000000000000000000000000b0" as const;
-const hash = `0x${"1".repeat(64)}` as const;
-const proposal: AuditProposal = { chainId: 84532, contract: other, kind: "vs", marketId: "7", proposedAt: 100, disputableUntil: 3700, now: 200, live: true, side: 1, evidenceHash: hash, question: "Will the combined score exceed 250?", labelA: "Yes", labelB: "No", resolutionUrl: "https://example.com/game#mimir=json:eq:true:finished", category: "sports", deadline: 99, createdAt: 1, summary: "Original proposal" };
+const proposal: AuditProposal = { chainId: cfg.chainId, contract: cfg.realms.vs, kind: "vs", marketId: "7", proposedAt: 100, disputableUntil: 3700, now: 200, live: true, side: 1, evidenceHash: hash, question: "Will the combined score exceed 250?", labelA: "Yes", labelB: "No", resolutionUrl: "https://example.com/game#mimir=json:eq:true:finished", category: "sports", deadline: 99, createdAt: 1, summary: "Original proposal" };
 const review = { side: 2 as const, confidence: 95, explanation: "120 + 115 = 235.", model: "audit/test", evidence: { url: "https://example.com/game", text: "Final: 120–115", fetcher: "direct" }, reviewedAt: 200 };
 
-test("audit transactions use only existing dispute selectors with the exact native/ERC20 bond", () => {
-  const chains = marketChains({ arc: { mimirV3: account, mimirPool: other }, base: { mimirV3: account, mimirPool: other } }).chains;
-  const abi = parseAbi(["function disputeResolution(uint256)", "function dispute(uint256)"]);
-  for (const cfg of [chains.arc, chains.base]) for (const kind of ["vs", "pool"] as const) {
-    const call = auditDisputeCall(cfg, kind, "7");
-    assert.equal(call.to, kind === "vs" ? account : other);
-    assert.equal(call.value ?? 0n, cfg.id === "arc" ? 2_000_000_000_000_000_000n : 0n);
-    const decoded = decodeFunctionData({ abi, data: call.data });
-    assert.equal(decoded.functionName, kind === "vs" ? "disputeResolution" : "dispute");
-    assert.deepEqual(decoded.args, [7n]);
+const conf = (c: Partial<MarketConfig> = {}): MarketConfig => ({ owner: other, arbiter: other, oracle: other, auditAgent: account, feeRecipient: other, paused: false, disputeWindow: 3600, minStake: 1_000_000, disputeBond: 2_000_000, lockSeconds: 0, graceSeconds: 0, maxMarketStake: 0, maxAccountStake: 0, now: 200, ...c });
+const vsClaim: VsClaim = { id: 7, creator: other, question: proposal.question, creatorPosition: "Yes", counterPosition: "No", resolutionUrl: proposal.resolutionUrl, creatorStake: 10_000_000, totalChallengerStake: 10_000_000, reservedCreatorLiability: 0, eligibleCreator: 0, eligibleChallengers: 0, deadline: 99, state: 4, winnerSide: 0, resolutionSummary: "", confidence: 0, category: "sports", parentId: 0, challengerCount: 1, createdAt: 1, marketType: "binary", oddsMode: "pool", challengerPayoutBps: 0, handicapLine: "", settlementRule: "", maxChallengers: 0, isPrivate: false, evidenceHash: "", referrer: "", entryFees: 0, settlementCutoff: 80, lockAt: 0, proposal: { winnerSide: 1, confidence: 95, proposedAt: 100, disputedAt: 0, disputer: "", bond: 0, evidenceHash: hash, summary: "Original proposal" } };
+const poolMarket: PoolMarket = { id: 7, creator: other, deadline: 99, createdAt: 1, state: 1, outcome: 0, proposed: 2, proposedAt: 150, disputedAt: 0, disputer: "", bond: 0, totalA: 1, totalB: 1, eligibleA: 1, eligibleB: 1, entryFees: 0, settlementCutoff: 90, lockAt: 0, participants: 2, evidenceHash: hash, question: "Pool question?", labelA: "A", labelB: "B", resolutionUrl: "https://example.com/pool", category: "custom", summary: "pool proposal" };
+
+function fakeReads(over: Partial<AuditReads> = {}): AuditReads & { calls: string[] } {
+  const calls: string[] = [];
+  const log = <T>(name: string, v: T) => { calls.push(name);return Promise.resolve(v); };
+  return { calls, vsClaims: async () => [vsClaim], poolMarkets: async () => [poolMarket], vsClaim: id => log(`vsClaim(${id})`, vsClaim), poolMarket: id => log(`poolMarket(${id})`, poolMarket), vsConfig: () => log("vsConfig", conf()), poolConfig: () => log("poolConfig", conf()), ...over };
+}
+function fakeChain(over: Partial<AuditChain> = {}): AuditChain & { sent: GnoMsgCall[][] } {
+  const sent: GnoMsgCall[][] = [];
+  return { sent, allowanceWei: async () => 0n, balanceWei: async () => DISPUTE_BOND_WEI, gasUgnot: async () => 1_000_000n, send: async m => { sent.push(m);return { txHash: hash }; }, tx: async () => null, ...over };
+}
+
+test("audit transactions use only the realm dispute call, with the exact bond Approve in the same tx when short", () => {
+  for (const kind of ["vs", "pool"] as const) {
+    const realm = kind === "vs" ? cfg.realms.vs : cfg.realms.pool;
+    const func = kind === "vs" ? "DisputeResolution" : "Dispute";
+    const short = auditDisputeMessages(cfg, account, kind, "7", DISPUTE_BOND_WEI - 1n);
+    assert.deepEqual(short.map(m => [m.type, m.value.caller, m.value.pkg_path, m.value.func, m.value.args, m.value.send]), [
+      ["/vm.m_call", account, cfg.realms.musd, "Approve", [realmAddress(realm), "2000000"], ""],
+      ["/vm.m_call", account, realm, func, ["7"], ""],
+    ]);
+    const covered = auditDisputeMessages(cfg, account, kind, "7", DISPUTE_BOND_WEI);
+    assert.deepEqual(covered.map(m => [m.value.pkg_path, m.value.func, m.value.args]), [[realm, func, ["7"]]]);
+    for (const bad of ["0", "-1", "7.5", "x", "01"]) assert.throws(() => auditDisputeMessages(cfg, account, kind, bad, 0n), /market id/i);
   }
 });
 
-test("proposal reads are authoritative and bind the configured chain, contract and deadline", async () => {
-  const cfg = marketChains({ arc: {}, base: { mimirV3: account, mimirPool: other } }).chains.base;
-  const reads: string[] = [];
-  const client = { getChainId: async () => cfg.chainId, getBlock: async () => ({ timestamp: 200n }), readContract: async (r: any) => {
-    reads.push(r.functionName);assert.equal(r.address, account);assert.deepEqual(r.args ?? [], r.functionName === "disputeWindow" ? [] : [7n]);
-    if (r.functionName === "getClaim") return [other, proposal.question, "Yes", "No", proposal.resolutionUrl, 10n, 10n, 0n, 99n, 4, 0, "", 0, "sports", 0n, 1n, 1n, hash];
-    if (r.functionName === "proposals") return [1, 95, 100n, 0n, other, 0n, hash, "proposal"];
-    if (r.functionName === "disputeWindow") return 3600n;
-    if (r.functionName === "settlementCutoff") return 80n;
-    throw Error("unexpected read");
-  } } as unknown as PublicClient;
-  const p = await loadAuditProposal(cfg, client, "vs", "7");
-  assert.equal(p.cutoff, 80);assert.equal(p.disputableUntil, 3700);assert.equal(p.live, true);assert.equal(p.question, proposal.question);assert.equal(p.contract, account);assert.equal(p.now, 200);
-  assert.deepEqual(reads.sort(), ["disputeWindow", "getClaim", "proposals", "settlementCutoff"].sort());
-  await assert.rejects(loadAuditProposal(cfg, { ...client, getChainId: async () => 1 } as PublicClient, "vs", "7"), /chain/i);
+test("submit reads the allowance right before signing and sends one transaction", async () => {
+  for (const [allowance, count] of [[0n, 2], [DISPUTE_BOND_WEI, 1]] as const) {
+    const chain = fakeChain({ allowanceWei: async (owner, kind) => { assert.equal(owner, account);assert.equal(kind, "pool");return allowance; } });
+    const io = auditIO(cfg, fakeReads(), chain, account, "challenge", { proposal: { ...proposal, kind: "pool", contract: cfg.realms.pool }, status: "pending" }, async () => {});
+    assert.equal(await io.submit(), hash);
+    assert.equal(chain.sent.length, 1);assert.equal(chain.sent[0].length, count);
+    assert.equal(chain.sent[0].at(-1)!.value.func, "Dispute");
+    if (count === 2) assert.equal(chain.sent[0][0].value.func, "Approve");
+  }
+  assert.throws(() => auditIO(cfg, fakeReads(), fakeChain(), account, "challenge", { proposal: { ...proposal, contract: cfg.realms.pool }, status: "pending" }, async () => {}), /deployment/);
+  assert.throws(() => auditIO(cfg, fakeReads(), fakeChain(), account, "challenge", { proposal: { ...proposal, chainId: "gnoland-1" }, status: "pending" }, async () => {}), /deployment/);
+  const keyless = auditIO(cfg, fakeReads(), fakeChain(), undefined, "observe", { proposal, status: "pending" }, async () => {});
+  await assert.rejects(keyless.submit(), /signing key/);
+});
+
+test("the bond check requires the 2 mUSD bond, an unpaused realm, mUSD and GNOT gas", async () => {
+  const job: AuditJob = { proposal, status: "pending" };
+  await auditIO(cfg, fakeReads(), fakeChain(), account, "challenge", job, async () => {}).prepareBond();
+  const cases: [Partial<AuditReads>, Partial<AuditChain>, RegExp][] = [
+    [{ vsConfig: async () => conf({ disputeBond: 1_000_000 }) }, {}, /bond/],
+    [{ vsConfig: async () => conf({ paused: true }) }, {}, /paused/],
+    [{}, { balanceWei: async () => DISPUTE_BOND_WEI - 1n }, /mUSD/],
+    [{}, { gasUgnot: async () => 0n }, /GNOT/],
+  ];
+  for (const [r, c, err] of cases) {
+    const chain = fakeChain(c);
+    await assert.rejects(auditIO(cfg, fakeReads(r), chain, account, "challenge", job, async () => {}).prepareBond(), err);
+    assert.equal(chain.sent.length, 0);
+  }
+});
+
+test("proposal reads are authoritative realm JSON and bind the configured network, realm and deadline", async () => {
+  const reads = fakeReads();
+  const p = await loadAuditProposal(cfg, reads, "vs", "7");
+  assert.deepEqual(reads.calls.sort(), ["vsClaim(7)", "vsConfig"]);
+  assert.deepEqual(p, { ...proposal, cutoff: 80 });
+  const pool = await loadAuditProposal(cfg, reads, "pool", "7");
+  assert.equal(pool.contract, cfg.realms.pool);assert.equal(pool.side, 2);assert.equal(pool.proposedAt, 150);assert.equal(pool.disputableUntil, 3750);
+  assert.equal(pool.cutoff, 90);assert.equal(pool.live, true);assert.equal(pool.summary, "pool proposal");assert.equal(pool.labelB, "B");
+  const disputed = await loadAuditProposal(cfg, fakeReads({ vsClaim: async () => ({ ...vsClaim, state: 5 }) }), "vs", "7");
+  assert.equal(disputed.live, false);
+  await assert.rejects(loadAuditProposal(cfg, fakeReads({ vsClaim: async () => ({ ...vsClaim, id: 8 }) }), "vs", "7"), /different/);
+});
+
+test("the receipt adapter maps committed, failed and unknown transactions", async () => {
+  const job: AuditJob = { proposal, status: "submitted", txHash: hash };
+  for (const [tx, want] of [[null, null], [{ ok: true }, "success"], [{ ok: false }, "reverted"]] as const) {
+    const io = auditIO(cfg, fakeReads(), fakeChain({ tx: async h => { assert.equal(h, hash);return tx; } }), undefined, "observe", job, async () => {});
+    assert.equal(await io.receipt(hash), want);
+  }
 });
 
 function fixture(mode: "observe" | "challenge" = "challenge") {
@@ -65,7 +121,7 @@ function fixture(mode: "observe" | "challenge" = "challenge") {
 }
 
 test("audit identities bind the actual deployment and exact proposal", () => {
-  for (const change of [{ chainId: 5042002 }, { contract: account }, { kind: "pool" as const }, { marketId: "8" }, { proposedAt: 101 }, { side: 2 as const }, { evidenceHash: `0x${"2".repeat(64)}` as const }, { question: "A different question after a reorg?" }, { labelA: "No" }, { resolutionUrl: "https://example.com/other" }]) assert.notEqual(proposalKey(proposal), proposalKey({ ...proposal, ...change }));
+  for (const change of [{ chainId: "gnoland-1" }, { contract: cfg.realms.pool }, { kind: "pool" as const }, { marketId: "8" }, { proposedAt: 101 }, { side: 2 as const }, { evidenceHash: "2".repeat(64) }, { question: "A different question?" }, { labelA: "No" }, { resolutionUrl: "https://example.com/other" }]) assert.notEqual(proposalKey(proposal), proposalKey({ ...proposal, ...change }));
   assert.equal(proposalKey(proposal), proposalKey({ ...proposal, now: 300 }));
 });
 
@@ -123,7 +179,13 @@ test("a valid objection is saved and submitted once; an unknown receipt never re
   assert.equal(f.job.status, "challenged");assert.equal(f.calls.sends, 1);
 });
 
-test("a mined dispute remains monitored and reopens only after its receipt disappears and the proposal is live", async () => {
+test("a failed dispute transaction reopens the proposal for another attempt", async () => {
+  const f = fixture();await processAuditProposal(f.job, f.io);
+  f.io.receipt = async () => "reverted";await processAuditProposal(f.job, f.io);
+  assert.equal(f.job.status, "pending");assert.equal(f.job.txHash, undefined);
+});
+
+test("a committed dispute remains monitored and reopens only after its receipt disappears and the proposal is live", async () => {
   const f = fixture();await processAuditProposal(f.job, f.io);
   f.io.receipt = async () => "success";await processAuditProposal(f.job, f.io);
   assert.equal(f.job.status, "challenged");
@@ -136,18 +198,11 @@ test("a mined dispute remains monitored and reopens only after its receipt disap
   assert.equal(f.calls.sends, 2);
 });
 
-test("receipt scheduling retains mined disputes and rotates older due jobs fairly", () => {
+test("receipt scheduling retains committed disputes and rotates older due jobs fairly", () => {
   const mined: AuditJob = { proposal, status: "challenged", txHash: hash, nextTry: 100 };
   const waiting: AuditJob = { proposal: { ...proposal, marketId: "8" }, status: "submitted", txHash: hash, nextTry: 90 };
   assert.deepEqual(auditQueue([mined, waiting], "challenge", 200).filter(isAuditReceiptJob), [waiting, mined]);
   assert.equal(auditQueue([{ ...mined, nextTry: 300 }], "challenge", 200).length, 0);
-});
-
-test("the receipt adapter rejects inclusion in an orphaned block", async () => {
-  const cfg = marketChains({ arc: { mimirV3: account, mimirPool: other }, base: {} }).chains.arc;
-  const pub = { getTransactionReceipt: async () => ({ status: "success", blockNumber: 1n, blockHash: hash }), getBlock: async () => ({ hash: `0x${"2".repeat(64)}` }) } as unknown as PublicClient;
-  const io = auditIO(cfg, pub, undefined, undefined, "observe", { proposal, status: "challenged", txHash: hash }, async () => {});
-  assert.equal(await io.receipt(hash), null);
 });
 
 test("a changed proposal, expired window or role revocation aborts before sending", async () => {
@@ -166,25 +221,11 @@ test("temporary evaluation failure leaves a retryable pending proposal", async (
   await processAuditProposal(f.job, f.io);assert.equal(f.job.status, "pending");assert.equal(f.calls.sends, 0);
 });
 
-test("an unknown bond-approval transaction is reconciled before any further audit action", async () => {
-  const f = fixture();f.job.approvalTxHash = hash;
-  await processAuditProposal(f.job, f.io);
-  assert.equal(f.calls.reviews, 0);assert.equal(f.calls.bonds, 0);assert.equal(f.calls.sends, 0);
-  f.io.receipt = async () => "success";
-  await processAuditProposal(f.job, f.io);
-  assert.equal(f.job.approvalTxHash, undefined);assert.equal(f.calls.sends, 1);
+test("a failed bond check never signs", async () => {
+  const f = fixture();f.io.prepareBond = async () => { f.calls.bonds++;throw Error("Audit account needs the mUSD bond and GNOT gas"); };
+  await assert.rejects(processAuditProposal(f.job, f.io), /bond/);
+  assert.equal(f.calls.sends, 0);assert.equal(f.job.txHash, undefined);
 });
-
-test("audit transaction signing retains the local account instead of switching to RPC wallet signing", async () => {
-  const signer = privateKeyToAccount(`0x${"1".repeat(64)}`);
-  const cfg = marketChains({ arc: { mimirV3: account, mimirPool: other }, base: {} }).chains.arc;
-  const wallet = { account: signer, chain: undefined, sendTransaction: async (args: any) => { assert.equal(args.account, signer);return hash; } } as unknown as WalletClient;
-  const pub = { call: async () => ({ data: "0x" }) } as unknown as PublicClient;
-  const job: AuditJob = { proposal: { ...proposal, chainId: cfg.chainId, contract: account }, status: "pending" };
-  const io = auditIO(cfg, pub, wallet, signer.address, "challenge", job, async () => {});
-  assert.equal(await io.submit(), hash);
-});
-
 
 test("auditor binds the cutoff and challenges an incorrect cutoff even on the same winning side", async () => {
   const p = { ...proposal, cutoff: 80 };
@@ -197,7 +238,6 @@ test("auditor binds the cutoff and challenges an incorrect cutoff even on the sa
   assert.equal(result?.cutoff, 80);
   assert.equal(await reviewProposal(p, { fetch: async () => evidence, llm: async () => ({ text: JSON.stringify({ verdict: "CHALLENGERS_WIN", confidence: 95, explanation: "235 is below 250" }), provider: "audit", model: "fixture" }) }), null);
 });
-
 
 test("a matching DRAW does not spend a bond on an irrelevant cutoff", async () => {
   const p = { ...proposal, side: 3, cutoff: 0 };

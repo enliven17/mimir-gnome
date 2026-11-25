@@ -3,17 +3,18 @@ import { dirname } from "node:path";
 import { randomUUID } from "node:crypto";
 import { proposalKey, type AuditJob } from "./review";
 
+/** v2 (gno.land): no log cursors; `seen` maps "<chain>:<realm>:<kind>:<id>:<proposedAt>" to its window end. */
 export interface AuditState {
-  version: 1; deployment: string; cursors: Record<string, string>;
+  version: 2; deployment: string;
   seen: Record<string, number>; jobs: Record<string, AuditJob>;
 }
 export async function readAuditState(path: string, deployment: string): Promise<AuditState> {
   let raw: string;
   try { raw = await readFile(path, "utf8"); }
-  catch (err) { if ((err as NodeJS.ErrnoException).code === "ENOENT") return { version: 1, deployment, cursors: {}, seen: {}, jobs: {} };throw err; }
+  catch (err) { if ((err as NodeJS.ErrnoException).code === "ENOENT") return { version: 2, deployment, seen: {}, jobs: {} };throw err; }
   const state = JSON.parse(raw) as AuditState;
-  if (state.version !== 1 || state.deployment !== deployment) throw Error("Audit checkpoint deployment mismatch; use a fresh state file");
-  if (!state.cursors || !state.seen || !state.jobs || Object.values(state.cursors).some(v => !/^\d+$/.test(v))) throw Error("Corrupted audit checkpoint");
+  if (state.version !== 2 || state.deployment !== deployment) throw Error("Audit checkpoint deployment mismatch; use a fresh state file");
+  if (!state.seen || !state.jobs || Object.values(state.seen).some(v => !Number.isSafeInteger(v))) throw Error("Corrupted audit checkpoint");
   for (const [key, job] of Object.entries(state.jobs)) {
     if (!["vs", "pool"].includes(job.proposal.kind) || proposalKey(job.proposal) !== key) throw Error("Corrupted audit proposal identity");
   }
@@ -28,7 +29,7 @@ export async function saveAuditState(path: string, state: AuditState): Promise<v
   try { await rename(temp, path); }
   finally { await rm(temp, { force: true }); }
 }
-/** No automatic stale-lock stealing: that can create two signers using the same nonce stream. */
+/** No automatic stale-lock stealing: that can create two signers racing on the same account sequence. */
 export async function lockAuditState(path: string): Promise<() => Promise<void>> {
   await mkdir(dirname(path), { recursive: true });
   const lock = `${path}.lock`;await mkdir(lock, { mode: 0o700 });
