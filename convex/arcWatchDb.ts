@@ -10,7 +10,7 @@ export const snapshot = internalQuery({
   handler: async (ctx, { chain, now }) => {
     await assertMarketDeployment(ctx);
     const byStatus = async (st: "proposed" | "disputed") =>
-      (await ctx.db.query("arcMarkets").withIndex("by_status_deadline", (q) => q.eq("status", st)).take(400)).filter((m) => (m.chain ?? "arc") === chain);
+      (await ctx.db.query("arcMarkets").withIndex("by_status_deadline", (q) => q.eq("status", st)).take(400)).filter((m) => (m.chain ?? "gno") === chain);
     const proposed = [];
     for (const m of await byStatus("proposed")) {
       if (m.disputableUntil <= now) continue;
@@ -18,7 +18,7 @@ export const snapshot = internalQuery({
       proposed.push({ kind: m.kind, marketId: m.marketId, question: m.question, disputableUntil: m.disputableUntil, verdictSide: verdict?.side ?? null });
     }
     const disputed = (await byStatus("disputed")).map((m) => ({ kind: m.kind, marketId: m.marketId, question: m.question, vetoed: m.vetoed ?? false, refundAt: m.refundAt }));
-    const stuck = (await ctx.db.query("arcOracleTries").take(1000)).filter((t) => (t.chain ?? "arc") === chain && t.attempts >= 6 && t.lastError).map((t) => ({ kind: t.kind, marketId: t.marketId, attempts: t.attempts, lastError: t.lastError ?? "" }));
+    const stuck = (await ctx.db.query("arcOracleTries").take(1000)).filter((t) => (t.chain ?? "gno") === chain && t.attempts >= 6 && t.lastError).map((t) => ({ kind: t.kind, marketId: t.marketId, attempts: t.attempts, lastError: t.lastError ?? "" }));
     const heartbeats = (await ctx.db.query("arcHeartbeats").take(50)).map((h) => ({ name: h.name, at: h.at }));
     return { proposed, disputed, stuck, heartbeats };
   },

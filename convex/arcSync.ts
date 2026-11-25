@@ -20,6 +20,7 @@ import { serverMarketChains } from "../lib/chains/registry";
 import { readAllMarkets, readPool, readVs, type SnapshotPosition } from "../lib/chains/snapshot";
 import type { GnoConfig } from "../lib/gno/config";
 import { eventRows, touchedMarkets, type IndexedBlock, type Kind } from "../lib/gno/indexer";
+import { missingRealm } from "../lib/gno/rpc";
 import { gnoBlock, gnoBlockResults } from "../lib/gno/tx";
 import { jevEnabled } from "../lib/jev";
 import { triageMarket } from "../lib/jev-triage";
@@ -46,10 +47,6 @@ async function readBlocks(from: number, to: number, cfg: GnoConfig): Promise<Ind
   }
   return out;
 }
-
-/** A realm that is not on chain yet answers its queries with an unknown package. */
-export const missingRealm = (err: unknown) =>
-  /package not found|invalid package path|unknown import path|cannot find package/i.test(err instanceof Error ? err.message : String(err));
 
 export const sync = internalAction({
   // `chain` is accepted for old schedules (arc.poke); gno.land is the only chain.

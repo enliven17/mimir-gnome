@@ -102,3 +102,7 @@ export async function ugnotBalance(address: string, cfg: GnoConfig = GNO): Promi
 
 /** A Go string literal for a qeval argument. */
 export const goString = (s: string) => JSON.stringify(s);
+
+/** A realm that is not on chain (yet) answers its queries with an unknown package. */
+export const missingRealm = (err: unknown) =>
+  /package not found|invalid package path|unknown import path|cannot find package/i.test(err instanceof Error ? err.message : String(err));

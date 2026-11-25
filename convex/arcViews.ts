@@ -1,26 +1,23 @@
 import { assertMarketDeployment } from "./marketDeploymentGuard";
-// Read-only views for the market UI that span tables: the council roster (each persona's wallets, record and recent
-// stakes) and the oracle's totals. Wallet addresses come from ARC_COUNCIL_WALLETS / BASE_COUNCIL_WALLETS (public
-// addresses, no secrets).
-import { privateKeyToAccount } from "viem/accounts";
+// Read-only views for the market UI that span tables: the council roster (each persona's account, record and recent
+// stakes) and the oracle's totals. Addresses come from GNO_COUNCIL_WALLETS (public) or are derived from the keys.
 import { v } from "convex/values";
 import { query } from "./_generated/server";
-import { councilWallets, oracleKey } from "../lib/chains/house";
+import { councilWallets, oracleAddress } from "../lib/chains/house";
 import { serverMarketChains } from "../lib/chains/registry";
 
 const VERDICT_COUNT_CAP = 5000;
 
-/** Every persona with a wallet on any chain: its Arc address (else Base), record on settled markets, money at risk, last stakes. */
+/** Every persona with an account: its address, record on settled markets, money at risk, last stakes. */
 export const council = query({
   args: {},
   handler: async (ctx) => {
     await assertMarketDeployment(ctx);
     const out = [];
     const enabled = serverMarketChains().enabled;
-    const arc = enabled.includes("arc") ? councilWallets("arc") : {};
-    const base = enabled.includes("base") ? councilWallets("base") : {};
-    for (const slug of [...new Set([...Object.keys(arc), ...Object.keys(base)])]) {
-      const addresses = [base[slug]?.address, arc[slug]?.address].filter((a): a is `0x${string}` => Boolean(a)).map((a) => a.toLowerCase());
+    const wallets = enabled.includes("gno") ? councilWallets() : {};
+    for (const slug of Object.keys(wallets)) {
+      const addresses = [wallets[slug].address];
       const address = addresses[0];
       const positions = [];
       for (const a of new Set(addresses)) positions.push(...(await ctx.db.query("arcPositions").withIndex("by_user", (q) => q.eq("user", a)).order("desc").take(300)));
@@ -29,7 +26,7 @@ export const council = query({
       let atRisk = 0n;
       const bets = [];
       for (const p of positions) {
-        const chain = p.chain ?? "arc";
+        const chain = p.chain ?? "gno";
         if (!enabled.includes(chain)) continue;
         const m = await ctx.db.query("arcMarkets").withIndex("by_market", (q) => q.eq("chain", chain).eq("kind", p.kind).eq("marketId", p.marketId)).unique();
         if (!m) continue;
@@ -40,31 +37,30 @@ export const council = query({
         bets.push({ chain, kind: p.kind, marketId: p.marketId, amount: p.amount, question: m.question, createdAt: m.createdAt });
       }
       bets.sort((a, b) => b.createdAt - a.createdAt);
-      out.push({ slug, address, base: base[slug]?.address.toLowerCase() ?? null, stakes: positions.length, won, lost, atRisk: atRisk.toString(), recentBets: bets.slice(0, 5) });
+      out.push({ slug, address, stakes: positions.length, won, lost, atRisk: atRisk.toString(), recentBets: bets.slice(0, 5) });
     }
     return out;
   },
 });
 
-/** The oracle's address (one key, the same address on every chain) and how many verdicts it has published. */
+/** The oracle's address and how many verdicts it has published. */
 export const oracle = query({
   args: {},
   handler: async (ctx) => {
     await assertMarketDeployment(ctx);
     // Only the public address leaves this function.
-    const key = oracleKey();
-    const address = key ? privateKeyToAccount(key).address : null;
+    const address = oracleAddress();
     // Bounded count: past VERDICT_COUNT_CAP the page shows "N+".
     const enabled = serverMarketChains().enabled;
-    const verdicts = (await ctx.db.query("arcVerdicts").take(VERDICT_COUNT_CAP)).filter((r) => enabled.includes(r.chain ?? "arc"));
-    return { address, base: address, verdicts: verdicts.length, capped: verdicts.length >= VERDICT_COUNT_CAP };
+    const verdicts = (await ctx.db.query("arcVerdicts").take(VERDICT_COUNT_CAP)).filter((r) => enabled.includes(r.chain ?? "gno"));
+    return { address, verdicts: verdicts.length, capped: verdicts.length >= VERDICT_COUNT_CAP };
   },
 });
 
 
 /**
- * VS markets where any of `wallets` (lowercase Arc addresses) holds a challenger position, in `statuses`, with every
- * position: the Arc side of baskets and copy trading (lib/server/arc-baskets.ts).
+ * VS markets where any of `wallets` (lowercase g1 addresses) holds a challenger position, in `statuses`, with every
+ * position: the market side of baskets and copy trading (lib/server/arc-baskets.ts).
  */
 export const challengedBy = query({
   args: { wallets: v.array(v.string()), statuses: v.array(v.string()), limit: v.optional(v.number()) },
@@ -76,7 +72,7 @@ export const challengedBy = query({
     for (const w of wallets.slice(0, 50)) {
       const legs = await ctx.db.query("arcPositions").withIndex("by_user", (q) => q.eq("user", w.toLowerCase())).order("desc").take(400);
       for (const leg of legs) {
-        const chain = leg.chain ?? "arc";
+        const chain = leg.chain ?? "gno";
         const key = `${chain}:${leg.marketId}`;
         if (leg.kind !== "vs" || leg.side !== 2 || seen.has(key)) continue;
         const m = await ctx.db.query("arcMarkets").withIndex("by_market", (q) => q.eq("chain", chain).eq("kind", "vs").eq("marketId", leg.marketId)).unique();
@@ -91,7 +87,7 @@ export const challengedBy = query({
   },
 });
 
-/** Total staked per Arc address (gross of nothing: the net stakes the index holds), for the campaign board. */
+/** Total staked per account (gross of nothing: the net stakes the index holds), for the campaign board. */
 export const volumeByUser = query({
   args: {},
   handler: async (ctx) => {
@@ -100,7 +96,7 @@ export const volumeByUser = query({
     // Money that came straight back scores nothing: cancelled markets, and settled ones that refunded everyone (a draw,
     // unresolvable, a one-sided pool), so opening and cancelling markets cannot farm points.
     const refunded = new Set<string>();
-    const key = (r: { chain?: string; kind: string; marketId: number }) => `${r.chain ?? "arc"}:${r.kind}:${r.marketId}`;
+    const key = (r: { chain?: string; kind: string; marketId: number }) => `${r.chain ?? "gno"}:${r.kind}:${r.marketId}`;
     for (const m of await ctx.db.query("arcMarkets").withIndex("by_status_deadline", (q) => q.eq("status", "cancelled")).take(5000)) refunded.add(key(m));
     for (const m of await ctx.db.query("arcMarkets").withIndex("by_status_deadline", (q) => q.eq("status", "resolved")).take(5000))
       if (m.winner !== 1 && m.winner !== 2) refunded.add(key(m));
@@ -124,17 +120,17 @@ export const stats = query({
   handler: async (ctx) => {
     await assertMarketDeployment(ctx);
     const enabled = serverMarketChains().enabled;
-    const rows = (await ctx.db.query("arcMarkets").order("desc").take(500)).filter((m) => !m.isPrivate && enabled.includes(m.chain ?? "arc"));
+    const rows = (await ctx.db.query("arcMarkets").order("desc").take(500)).filter((m) => !m.isPrivate && enabled.includes(m.chain ?? "gno"));
     const claims = [];
     let openPool = 0n;
     let resolved = 0;
     for (const m of rows) {
-      const verdict = await ctx.db.query("arcVerdicts").withIndex("by_market", (q) => q.eq("chain", m.chain ?? "arc").eq("kind", m.kind).eq("marketId", m.marketId)).order("desc").first();
+      const verdict = await ctx.db.query("arcVerdicts").withIndex("by_market", (q) => q.eq("chain", m.chain ?? "gno").eq("kind", m.kind).eq("marketId", m.marketId)).order("desc").first();
       const state = STATE[m.status as keyof typeof STATE] ?? 0;
       if (state <= 1) openPool += BigInt(m.stakeA) + BigInt(m.stakeB);
       if (state === 2) resolved++;
       claims.push({
-        id: m.marketId, chain: m.chain ?? "arc", kind: m.kind, question: m.question, category: m.category,
+        id: m.marketId, chain: m.chain ?? "gno", kind: m.kind, question: m.question, category: m.category,
         creatorStake: usdcUnits(m.stakeA), totalChallengerStake: usdcUnits(m.stakeB),
         state, winnerSide: m.winner, confidence: verdict?.confidence ?? 0, createdAt: m.createdAt, deadline: m.deadline,
       });

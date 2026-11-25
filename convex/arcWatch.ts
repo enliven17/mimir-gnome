@@ -1,39 +1,26 @@
 "use node";
 
-// The watchdog: every 5 minutes, look for what needs a human and message the admin Telegram (TELEGRAM_BOT_TOKEN to each
+// The watchdog: every 10 minutes, look for what needs a human and message the admin Telegram (TELEGRAM_BOT_TOKEN to each
 // TELEGRAM_ADMIN_IDS chat; the admin must have sent /start to the bot once). Each problem is sent once per its quiet period.
-// Watches: a live proposal that is not our oracle's verdict (a stolen oracle key), a participant's dispute (the Safe must
-// rule), a paused contract or a changed/queued role, the oracle and creator running low on USDC, a stopped job, a market
-// the oracle keeps failing on. Rules: lib/arc/watch.ts. One pass per enabled market chain (lib/chains/registry.ts); on
-// Base the oracle and the house creator pay gas in ETH, so that is what "low" checks there.
-import { formatEther, parseAbi, type Address } from "viem";
-import { privateKeyToAccount } from "viem/accounts";
-
+// Watches: a live proposal that is not our oracle's verdict (a stolen oracle key), a participant's dispute (the arbiter
+// must rule), a paused realm or a changed/queued role, the oracle and creator running low on GNOT or mUSD, a stopped
+// job, a market the oracle keeps failing on, and house keys set the wrong way. Rules: lib/arc/watch.ts. Realms that are
+// not deployed yet are reported once and otherwise skipped.
 import { internal } from "./_generated/api";
 import { internalAction } from "./_generated/server";
-import { chainPublicClient } from "../lib/chains/client";
-import { houseCreatorWallet, oracleKey, oracleKeyFor, oracleKeyWarnings } from "../lib/chains/house";
+import { gasBalanceUgnot, musdBalanceWei } from "../lib/chains/client";
+import { houseCreatorWallet, houseKeyWarnings, oracleAddress, oracleKey, oracleKeyWarnings } from "../lib/chains/house";
 import { serverMarketChains } from "../lib/chains/registry";
+import type { GnoConfig } from "../lib/gno/config";
+import { poolConfig, poolMarket, vsClaim, vsConfig, type MarketConfig } from "../lib/gno/reads";
+import { missingRealm, qeval, qevalValues, unquoteGo } from "../lib/gno/rpc";
 import { proposalProblem, roleProblems, type Problem } from "../lib/arc/watch";
 
 const HOUR = 3_600_000;
-const MARKET = parseAbi([
-  "function owner() view returns (address)",
-  "function arbiter() view returns (address)",
-  "function oracle() view returns (address)",
-  "function paused() view returns (bool)",
-  "function feeRecipient() view returns (address)",
-  "function pendingOwner() view returns (address)",
-  "function pendingOracle() view returns (address)",
-  "function pendingFeeRecipient() view returns (address)",
-  "function proposals(uint256) view returns (uint8 winnerSide, uint8 confidence, uint64 proposedAt, uint64 disputedAt, address disputer, uint256 bond, bytes32 evidenceHash, string summary)",
-  "function getProposal(uint256) view returns (uint8 proposed, uint256 proposedAt, uint256 disputedAt, address disputer, uint256 bond, bytes32 evidenceHash)",
-]);
-const FEES = parseAbi(["function owner() view returns (address)", "function pendingOwner() view returns (address)", "function pendingSigner() view returns (address)"]);
 // How long a job may be silent before it counts as stopped (its cron interval plus slack).
-const STALE_MS: Record<string, number> = { "arc-sync": 5 * 60_000, "base-sync": 5 * 60_000, "arc-oracle": 10 * 60_000, "arc-creator": 3 * HOUR };
-/** Low-balance floors for the gas token (USDC on Arc, ETH on Base). */
-const LOW_GAS = { arc: { oracle: 0.5, creator: 0.3 }, base: { oracle: 0.003, creator: 0.002 } } as const;
+const STALE_MS: Record<string, number> = { "gno-sync": 5 * 60_000, "gno-oracle": 10 * 60_000, "arc-creator": 3 * HOUR };
+/** Low-balance floors: GNOT pays every account's gas; the creator also needs mUSD for seed stakes. */
+const LOW = { oracle: { gnot: 5, musd: 0 }, creator: { gnot: 5, musd: 1 } } as const;
 
 async function sendTelegram(text: string): Promise<boolean> {
   const token = process.env.TELEGRAM_BOT_TOKEN?.trim();
@@ -59,101 +46,99 @@ async function sendTelegram(text: string): Promise<boolean> {
 
 const utc = (unix: number) => new Date(unix * 1000).toISOString().slice(0, 16).replace("T", " ");
 
+/** A queued role change on a realm (p/mimir roles), or "" when none or unreadable. */
+async function pending(realm: string, field: string, cfg: GnoConfig): Promise<string> {
+  try {
+    const [v] = qevalValues(await qeval(realm, `roles.${field}.String()`, cfg));
+    return v?.type === "string" ? unquoteGo(v.value) : "";
+  } catch {
+    return "";
+  }
+}
+
 export const tick = internalAction({
   args: {},
   handler: async (ctx): Promise<void> => {
     await ctx.runQuery(internal.marketDeployment.check, {});
     if (process.env.MIMIR_BACKEND_OFF === "1") return; // this deployment is switched off (crons.ts)
     const e = process.env;
-    const registry = serverMarketChains(e);
+    const chain = serverMarketChains(e).chains.gno;
+    const g = chain.gno;
     const problems: Problem[] = [];
-    let tag = "Mimir";
+    const tag = chain.network === "mainnet" ? "Mimir mainnet" : "Mimir testnet";
+    const oracle = oracleAddress(e);
 
-    for (const chainId of registry.enabled) {
-      const cfg = registry.chains[chainId];
-      const mimirV3 = cfg.contracts.mimirV3 as Address;
-      const mimirPool = cfg.contracts.mimirPool as Address;
-      const fees = cfg.contracts.mimirFees ?? undefined;
-      const key = oracleKeyFor(chainId, e);
-      if (!key) continue;
-      const oracle = privateKeyToAccount(key).address;
-      const client = chainPublicClient(cfg);
+    if (chain.enabled && oracle) {
       const now = Math.floor(Date.now() / 1000);
-      const on = `${cfg.label}: `;
-      tag = cfg.network === "mainnet" ? "Mimir mainnet" : "Mimir testnet";
-      const local: Problem[] = [];
-
       try {
-        // 1. Roles and pause on every contract.
-        for (const [name, address] of [["MimirV3", mimirV3], ["MimirPool", mimirPool]] as const) {
-          const read = (functionName: string) => client.readContract({ address, abi: MARKET, functionName } as never) as Promise<unknown>;
-          const [owner, arbiter, orc, paused, feeRecipient, pOwner, pOracle, pFee] = await Promise.all(
-            ["owner", "arbiter", "oracle", "paused", "feeRecipient", "pendingOwner", "pendingOracle", "pendingFeeRecipient"].map(read),
-          );
-          local.push(
+        // 1. Roles and pause on both market realms.
+        for (const [name, path, read] of [["r/vs", g.realms.vs, vsConfig], ["r/pool", g.realms.pool, poolConfig]] as const) {
+          let c: MarketConfig;
+          try {
+            c = await read(g);
+          } catch (err) {
+            if (missingRealm(err)) {
+              problems.push({ key: `missing:${path}`, ttlMs: 24 * HOUR, text: `ℹ️ ${name} (${path}) is not on chain yet: nothing is indexed or settled there.` });
+              continue;
+            }
+            throw err;
+          }
+          const [pOwner, pOracle, pFee] = await Promise.all(["PendingOwner", "PendingOracle", "PendingFeeRecipient"].map((f) => pending(path, f, g)));
+          problems.push(
             ...roleProblems(
-              {
-                name, address, owner: String(owner), arbiter: String(arbiter), oracle: String(orc), paused: Boolean(paused), feeRecipient: String(feeRecipient),
-                pending: { owner: String(pOwner), oracle: String(pOracle), "fee recipient": String(pFee) },
-              },
+              { name, address: path, owner: c.owner, arbiter: c.arbiter, oracle: c.oracle, paused: c.paused, feeRecipient: c.feeRecipient, pending: { owner: pOwner, oracle: pOracle, "fee recipient": pFee } },
               oracle,
             ),
           );
         }
-        if (fees) {
-          const read = (functionName: string) => client.readContract({ address: fees, abi: FEES, functionName } as never) as Promise<unknown>;
-          const [owner, pOwner, pSigner] = await Promise.all(["owner", "pendingOwner", "pendingSigner"].map(read));
-          local.push(...roleProblems({ name: "MimirFees", address: fees, owner: String(owner), pending: { owner: String(pOwner), "fee signer": String(pSigner) } }, oracle));
-        }
 
         // 2. Live proposals: the side on chain must be the verdict our oracle saved (under 3 minutes old: maybe not saved yet, skip).
-        const snap = await ctx.runQuery(internal.arcWatchDb.snapshot, { chain: chainId, now });
+        const snap = await ctx.runQuery(internal.arcWatchDb.snapshot, { chain: "gno", now });
         for (const p of snap.proposed) {
           const [side, proposedAt] =
             p.kind === "vs"
-              ? await client.readContract({ address: mimirV3, abi: MARKET, functionName: "proposals", args: [BigInt(p.marketId)] }).then((r) => [Number(r[0]), Number(r[2])])
-              : await client.readContract({ address: mimirPool, abi: MARKET, functionName: "getProposal", args: [BigInt(p.marketId)] }).then((r) => [Number(r[0]), Number(r[1])]);
+              ? await vsClaim(p.marketId, g).then((c) => [c.proposal.winnerSide, c.proposal.proposedAt])
+              : await poolMarket(p.marketId, g).then((m) => [m.proposed, m.proposedAt]);
           if (now - proposedAt < 180) continue;
           const problem = proposalProblem(p, side);
-          if (problem) local.push(problem);
+          if (problem) problems.push(problem);
         }
 
-        // 3. A participant disputed: the Safe has to rule (resolveDispute) before the refund opens.
+        // 3. A participant disputed: the arbiter has to rule (ResolveDisputeWithCutoff) before the refund opens.
         for (const d of snap.disputed.filter((d) => !d.vetoed))
-          local.push({
+          problems.push({
             key: `dispute:${d.kind}:${d.marketId}`,
             ttlMs: 24 * HOUR,
-            text: `⚖️ Dispute on ${d.kind} #${d.marketId} "${d.question.slice(0, 120)}". The Safe must rule (resolveDispute) before ${utc(d.refundAt)} UTC, or everyone is refunded.`,
+            text: `⚖️ Dispute on ${d.kind} #${d.marketId} "${d.question.slice(0, 120)}". The arbiter must rule (ResolveDisputeWithCutoff) before ${utc(d.refundAt)} UTC, or everyone is refunded.`,
           });
 
         // 4. A market the oracle keeps failing on (reported at 6 tries, again at 12). Waiting on a game still in play is a
         // deferral, not a failure: only a try that ended in an error counts (arcWatchDb).
         for (const s of snap.stuck)
-          local.push({ key: `stuck:${s.kind}:${s.marketId}:${s.attempts >= 12 ? 12 : 6}`, ttlMs: 7 * 24 * HOUR, text: `⚠️ The oracle has failed ${s.attempts}× on ${s.kind} #${s.marketId}: ${s.lastError.slice(0, 300)}` });
+          problems.push({ key: `stuck:${s.kind}:${s.marketId}:${s.attempts >= 12 ? 12 : 6}`, ttlMs: 7 * 24 * HOUR, text: `⚠️ The oracle has failed ${s.attempts}× on ${s.kind} #${s.marketId}: ${s.lastError.slice(0, 300)}` });
 
-        // 5. Stopped jobs (shared heartbeats, reported once).
+        // 5. Stopped jobs.
         for (const [name, stale] of Object.entries(STALE_MS)) {
-          if (name.endsWith("-sync") && !name.startsWith(chainId)) continue;
           const h = snap.heartbeats.find((b) => b.name === name);
           if (h && Date.now() - h.at > stale) problems.push({ key: `stale:${name}`, ttlMs: 2 * HOUR, text: `⚠️ Job ${name} last ran ${Math.round((Date.now() - h.at) / 60_000)} min ago.` });
         }
 
-        // 6. Gas money: USDC on Arc, ETH on Base.
-        for (const [who, address, min] of [["Oracle", oracle, LOW_GAS[chainId].oracle], ["Market creator", houseCreatorWallet(chainId, e)?.address, LOW_GAS[chainId].creator]] as const) {
+        // 6. Money: GNOT for gas, and mUSD for the creator's seed stakes.
+        for (const [who, address, min] of [["Oracle", oracle, LOW.oracle], ["Market creator", houseCreatorWallet(e)?.address, LOW.creator]] as const) {
           if (!address) continue;
-          const bal = Number(formatEther(await client.getBalance({ address: address as Address })));
-          if (bal < min) local.push({ key: `low:${address}`, ttlMs: 12 * HOUR, text: `🪫 ${who} ${address} has ${bal.toFixed(4)} ${cfg.gas.symbol} (under ${min}). Top it up.` });
+          const [ugnot, musd] = await Promise.all([gasBalanceUgnot(address, g), musdBalanceWei(address, g)]);
+          const gnot = Number(ugnot) / 1e6;
+          const usd = Number(musd) / 1e18;
+          if (gnot < min.gnot) problems.push({ key: `low-gnot:${address}`, ttlMs: 12 * HOUR, text: `🪫 ${who} ${address} has ${gnot.toFixed(2)} GNOT (under ${min.gnot}). Top it up.` });
+          if (usd < min.musd) problems.push({ key: `low-musd:${address}`, ttlMs: 12 * HOUR, text: `🪫 ${who} ${address} has ${usd.toFixed(2)} mUSD (under ${min.musd}). Top it up.` });
         }
       } catch (err) {
-        local.push({ key: "watch-error", ttlMs: HOUR, text: `⚠️ The watchdog could not finish its checks: ${err instanceof Error ? err.message.slice(0, 300) : String(err)}` });
+        problems.push({ key: "watch-error", ttlMs: HOUR, text: `⚠️ The watchdog could not finish its checks: ${err instanceof Error ? err.message.slice(0, 300) : String(err)}` });
       }
-      // Keys and texts name the chain: the same market id exists on both.
-      problems.push(...local.map((p) => ({ ...p, key: `${chainId}:${p.key}`, text: `${on}${p.text}` })));
     }
 
-    // One oracle key signs on every chain (lib/chains/house.ts): say when the env is set the old way.
-    for (const w of oracleKeyWarnings(e)) problems.push({ key: `oracle-key:${w.slice(0, 40)}`, ttlMs: 24 * HOUR, text: `⚠️ ${w}` });
-    if (registry.enabled.length && !oracleKey(e)) problems.push({ key: "oracle-key:none", ttlMs: 12 * HOUR, text: "⚠️ No ORACLE_KEY: nothing is settled on any chain." });
+    for (const w of [...oracleKeyWarnings(e), ...houseKeyWarnings(e)]) problems.push({ key: `keys:${w.slice(0, 40)}`, ttlMs: 24 * HOUR, text: `⚠️ ${w}` });
+    if (chain.enabled && !oracleKey(e)) problems.push({ key: "oracle-key:none", ttlMs: 12 * HOUR, text: "⚠️ No ORACLE_MNEMONIC: nothing is settled." });
 
     const seen = new Set<string>();
     for (const p of problems) {
@@ -161,7 +146,7 @@ export const tick = internalAction({
       seen.add(p.key);
       if (!(await ctx.runMutation(internal.arcWatchDb.claim, { key: p.key, ttlMs: p.ttlMs }))) continue;
       const sent = await sendTelegram(`${tag}\n${p.text}`);
-      console.log(`[watch] ${sent ? "sent" : "NOT sent (Telegram env missing?)"}: ${p.text}`);
+      if (!sent) console.warn(`[watch] NOT sent (Telegram env missing?): ${p.text}`);
     }
   },
 });
