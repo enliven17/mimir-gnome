@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
+import { randomGnoAddress } from "../helpers/gno-sign";
 
 import {
   COPY_ID_PATTERN,
@@ -15,7 +15,7 @@ import {
 } from "../../lib/copy-form";
 import { copyPermissionMessage } from "../../lib/copy-trading";
 
-const FOLLOWER = privateKeyToAccount(generatePrivateKey()).address;
+const FOLLOWER = randomGnoAddress();
 const NOW = new Date("2026-01-10T12:00:00").getTime();
 
 function form(over: Partial<CopyFormValues> = {}): CopyFormValues {

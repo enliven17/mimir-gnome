@@ -5,6 +5,8 @@
 import { getArbitrarySignBytes, makeArbitrarySignDoc, type SignedArbitraryData } from "@adena-wallet/sdk";
 import { GnoWallet } from "@gnolang/gno-js-client";
 
+import { addressFromPubKey } from "../../lib/gno/keys";
+
 export interface TestAccount {
   address: string;
   /** JSON.stringify(SignedArbitraryData), exactly what signStatement returns. */
@@ -29,4 +31,9 @@ export async function testAccount(): Promise<TestAccount> {
       return JSON.stringify(proof);
     },
   };
+}
+
+/** A random, well-formed g1 address (no key behind it), for fixtures that only need an account id. */
+export function randomGnoAddress(): string {
+  return addressFromPubKey(crypto.getRandomValues(new Uint8Array(33)));
 }

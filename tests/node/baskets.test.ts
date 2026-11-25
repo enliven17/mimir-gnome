@@ -1,8 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
 import { GNO } from "../../lib/gno/config";
-import { testAccount } from "../helpers/gno-sign";
+import { randomGnoAddress, testAccount } from "../helpers/gno-sign";
 
 import {
   validateBasket,
@@ -202,7 +201,7 @@ test("the NAV cannot go negative", () => {
 });
 
 test("the follow message names the basket, the follower and the cap, exactly as given", () => {
-  const follower = privateKeyToAccount(generatePrivateKey()).address;
+  const follower = randomGnoAddress();
   const message = followMessage({
     basketId: "contrarian-mix",
     follower,
@@ -235,7 +234,7 @@ test("a follow signature is an Adena proof over the message and binds the cap", 
 });
 
 test("the compose message binds the creator, thesis and weights", () => {
-  const creator = privateKeyToAccount(generatePrivateKey()).address;
+  const creator = randomGnoAddress();
   const base = { id: "contrarian-mix", name: "Contrarian", thesis: "Fade it.", creator, members, signedAt: 1 };
   const message = composeMessage(base);
   assert.ok(message.includes(`creator: ${creator}`));
@@ -279,10 +278,10 @@ test("member ids must look like agent ids or persona slugs", () => {
 
 // ── Read-index claims → settlements and signals ────────────────────────────
 
-const ALPHA = privateKeyToAccount(generatePrivateKey()).address;
-const BETA = privateKeyToAccount(generatePrivateKey()).address;
-const CREATOR = privateKeyToAccount(generatePrivateKey()).address;
-const FOLLOWER = privateKeyToAccount(generatePrivateKey()).address;
+const ALPHA = randomGnoAddress();
+const BETA = randomGnoAddress();
+const CREATOR = randomGnoAddress();
+const FOLLOWER = randomGnoAddress();
 const byWallet = new Map([[ALPHA, "alpha"], [BETA, "beta"]]);
 
 function claim(over: Partial<IndexedClaim> = {}): IndexedClaim {

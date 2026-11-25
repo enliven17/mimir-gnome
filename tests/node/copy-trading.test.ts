@@ -1,8 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
 import { GNO } from "../../lib/gno/config";
-import { testAccount } from "../helpers/gno-sign";
+import { randomGnoAddress, testAccount } from "../helpers/gno-sign";
 
 import {
   evaluateCopy,
@@ -25,7 +24,7 @@ import { verifyWalletSignature } from "../../lib/agents/signature";
 import type { IndexedClaim } from "../../lib/baskets";
 
 const NOW = 1_700_000_000_000;
-const FOLLOWER = privateKeyToAccount(generatePrivateKey());
+const FOLLOWER = { address: randomGnoAddress() };
 
 function permission(over: Partial<CopyPermission> = {}): CopyPermission {
   return {
@@ -301,9 +300,9 @@ test("usage counts creator wins as losses, refunds as settled and v3 limbo as op
 
 // ── Signals from the read index ───────────────────────────────────────────
 
-const SIGNAL_WALLET = privateKeyToAccount(generatePrivateKey()).address;
-const EXECUTOR_WALLET = privateKeyToAccount(generatePrivateKey()).address;
-const OTHER = privateKeyToAccount(generatePrivateKey()).address;
+const SIGNAL_WALLET = randomGnoAddress();
+const EXECUTOR_WALLET = randomGnoAddress();
+const OTHER = randomGnoAddress();
 const NOW_SEC = Math.floor(NOW / 1000);
 
 function claim(over: Partial<IndexedClaim> = {}): IndexedClaim {
