@@ -16,10 +16,10 @@ export const sweep = internalMutation({ args: {}, handler: async (ctx) => {
 export const radar = query({ args: {}, handler: async (ctx) => {
     await assertMarketDeployment(ctx);
   const enabled = serverMarketChains().enabled;
-  const markets = (await ctx.db.query("arcMarkets").withIndex("by_deadline", (q) => q.gt("deadline", Date.now() / 1000)).take(150)).filter((m) => enabled.includes(m.chain ?? "arc") && !m.isPrivate && (m.status === "open" || m.status === "active"));
+  const markets = (await ctx.db.query("arcMarkets").withIndex("by_deadline", (q) => q.gt("deadline", Date.now() / 1000)).take(150)).filter((m) => enabled.includes(m.chain ?? "gno") && !m.isPrivate && (m.status === "open" || m.status === "active"));
   const out = [];
   for (const m of markets) {
-    const chain = m.chain ?? "arc";
+    const chain = m.chain ?? "gno";
     const decisions = await ctx.db.query("arcCouncilDecisions").withIndex("by_market", (q) => q.eq("chain", chain).eq("kind", m.kind).eq("marketId", m.marketId)).take(30);
     const take = await ctx.db.query("arcMarketTakes").withIndex("by_market", (q) => q.eq("chain", chain).eq("kind", m.kind).eq("marketId", m.marketId)).first();
     const opinions = decisions.filter((d) => d.outcome === "staked" || d.outcome === "abstained").map(({ slug, lean, at }) => ({ slug, lean, at }));
@@ -53,7 +53,7 @@ export const inbox = query({ args: { secret: v.string(), owner: v.string() }, ha
   const signals = await ctx.db.query("discoverySignals").withIndex("by_at", (q) => q.gte("at", Date.now() - 30 * 86_400_000)).order("desc").take(500);
   const items: { id: string; text: string; at: number; href: string }[] = [];
   for (const signal of signals) {
-    const chain = signal.marketChain ?? "arc";
+    const chain = signal.marketChain ?? "gno";
     const m = await ctx.db.query("arcMarkets").withIndex("by_market", (q) => q.eq("chain", chain).eq("kind", signal.marketKind).eq("marketId", signal.marketId)).unique();
     if (!m || m.isPrivate || !follows.some((f) => f.at <= signal.at && signalMatches(f.target, signal, seriesForMarket(m)))) continue;
     items.push({ id: signal._id, text: signal.text, at: signal.at, href: `/arena/${chain}/${signal.marketKind}/${signal.marketId}` });
@@ -61,7 +61,7 @@ export const inbox = query({ args: { secret: v.string(), owner: v.string() }, ha
   }
   for (const f of follows) if (f.target.startsWith("market:")) {
     const parts = f.target.split(":");
-    const [chain, kind, id] = (parts.length === 4 ? parts.slice(1) : ["arc", ...parts.slice(1)]) as ["arc" | "base", "vs" | "pool", string];
+    const [chain, kind, id] = (parts.length === 4 ? parts.slice(1) : ["gno", ...parts.slice(1)]) as ["gno", "vs" | "pool", string];
     const m = await ctx.db.query("arcMarkets").withIndex("by_market", (q) => q.eq("chain", chain).eq("kind", kind).eq("marketId", Number(id))).unique();
     if (m && !m.isPrivate && m.deadline * 1000 > Date.now() && m.deadline * 1000 - Date.now() < 3_600_000) items.push({ id: `closing:${f.target}`, text: `Closing within an hour: ${m.question}`, at: m.deadline * 1000 - 3_600_000, href: `/arena/${chain}/${kind}/${id}` });
   }

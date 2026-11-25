@@ -10,7 +10,7 @@ export const forWorker = internalQuery({ args: { chain: vChain, kind, marketId: 
   } });
 export const forMarket = query({ args: { chain: v.optional(vChain), kind, marketId: v.number() }, handler: async (ctx, a) => {
     await assertMarketDeployment(ctx);
-  const chain = a.chain ?? "arc";
+  const chain = a.chain ?? "gno";
   const m = await ctx.db.query("arcMarkets").withIndex("by_market", (q) => q.eq("chain", chain).eq("kind", a.kind).eq("marketId", a.marketId)).unique();
   if (!m || m.isPrivate) return [];
   return (await ctx.db.query("councilOpinions").withIndex("by_market", (q) => q.eq("chain", chain).eq("kind", a.kind).eq("marketId", a.marketId)).take(30))

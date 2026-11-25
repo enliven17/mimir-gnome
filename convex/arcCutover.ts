@@ -1,7 +1,7 @@
-// Contract cutover: the new MimirV3 / MimirPool restart market ids at 1, so the old index must go before arcSync reads
-// the new contracts (else old rows collide with new ids). Deletes every row of the arc* index tables in batches,
-// rescheduling itself until they are empty; arcSync then re-indexes from MIMIR_ARC_FROM_BLOCK (the cursor is wiped too).
-// Internal only; run on purpose, per deployment, after the new addresses are in the env and with the crons paused:
+// Realm cutover: redeployed r/vs / r/pool realms restart market ids at 1, so the old index must go before arcSync reads
+// the new realms (else old rows collide with new ids). Deletes every row of the arc* index tables in batches,
+// rescheduling itself until they are empty; arcSync then re-indexes from GNO_INDEX_FROM_BLOCK (the cursor is wiped too).
+// Internal only; run on purpose, per deployment, after the new realm paths are in the env and with the crons paused:
 //   npx convex run arcCutover:wipeArcIndex '{"confirm":"wipe-arc-index"}'            (dev)
 //   npx convex run --prod arcCutover:wipeArcIndex '{"confirm":"wipe-arc-index"}'     (prod, at cutover only)
 import { v } from "convex/values";

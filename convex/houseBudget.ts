@@ -1,8 +1,7 @@
 import { assertMarketDeployment } from "./marketDeploymentGuard";
-// The house creator's daily budget, ONE budget for every chain (CREATOR_DAILY_BUDGET_USDC, default 1 USDC a day):
-// what the house stakes on the markets it opens today (UTC), its own drafts (convex/arcCreator.ts) and the twins it
-// opens for other people's pools (convex/arcTwins.ts) alike. Each open reserves its seed here first, atomically, and a
-// send that fails releases it, so two jobs running at once never overspend.
+// The house creator's daily budget (CREATOR_DAILY_BUDGET_USDC, mUSD, default 1 a day): what the house stakes on the
+// markets it opens today (UTC, convex/arcCreator.ts). Each open reserves its seed here first, atomically, and a send
+// that fails releases it, so two jobs running at once never overspend.
 // Spent today = the larger of this ledger and the house's indexed positions on markets it opened today (the ledger is
 // new: before it existed, only the index knew).
 import { v } from "convex/values";
@@ -24,13 +23,11 @@ async function spentWei(ctx: QueryCtx, day: string): Promise<bigint> {
   const ledger = (await ctx.db.query("houseSpend").withIndex("by_day", (q) => q.eq("day", day)).take(2000)).reduce((s, r) => s + BigInt(r.wei), 0n);
   const dayStart = Math.floor(Date.parse(`${day}T00:00:00Z`) / 1000);
   let indexed = 0n;
-  for (const chain of ["base", "arc"] as const) {
-    const house = houseCreatorWallet(chain)?.address;
-    if (!house) continue;
+  const house = houseCreatorWallet()?.address;
+  if (house) {
     const legs = await ctx.db.query("arcPositions").withIndex("by_user", (q) => q.eq("user", house)).order("desc").take(300);
     for (const p of legs) {
-      if ((p.chain ?? "arc") !== chain) continue;
-      const m = await ctx.db.query("arcMarkets").withIndex("by_market", (q) => q.eq("chain", chain).eq("kind", p.kind).eq("marketId", p.marketId)).unique();
+      const m = await ctx.db.query("arcMarkets").withIndex("by_market", (q) => q.eq("chain", "gno").eq("kind", p.kind).eq("marketId", p.marketId)).unique();
       if (m && m.creator === house && m.createdAt >= dayStart && m.status !== "cancelled") indexed += BigInt(p.amount);
     }
   }

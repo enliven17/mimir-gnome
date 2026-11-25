@@ -1,27 +1,29 @@
 import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
 
-// The markets of every market chain (lib/chains/registry.ts: Base, Arc) as indexed from MimirV3 (kind "vs") and
-// MimirPool (kind "pool") by convex/arcSync.ts. The arc* table names are historical: every market row carries its
-// `chain`, and (chain, kind, marketId) is the key. Rows written before Base have no `chain`: they are Arc's
-// (convex/chainMigrate.ts backfills them; reads treat a missing chain as "arc").
-// Amounts are 18-dp index-unit strings on every chain (lib/chains/amounts.ts: Base's 6-dp USDC is scaled by 1e12 on
-// the way in; 18 dp overflows int64 past ~9.2 USDC); the *Usd floats are for sorting and display.
+// The markets of gno.land's r/vs (kind "vs") and r/pool (kind "pool") realms, as indexed by convex/arcSync.ts from the
+// realms' JSON views and their events. The arc* table names are historical: every row carries `chain` ("gno") and
+// (chain, kind, marketId) is the key.
+// Amounts are 18-dp index-unit strings (lib/chains/amounts.ts: mUSD's 6-dp units are scaled by 1e12 on the way in;
+// 18 dp overflows int64 past ~9.2 mUSD); the *Usd floats are for sorting and display.
 const kind = v.union(v.literal("vs"), v.literal("pool"));
 /** The market chain: gno.land only (lib/chains/registry.ts). */
 export const vChain = v.literal("gno");
-/** Optional only so pre-Base rows validate until the backfill; every new row sets it. */
+/** Optional in the validators for historical reasons; every row sets it. */
 const chain = v.optional(vChain);
 /**
- * An agent's own token, launched and paid for by its owner from their own wallet: Argus on Arc (with the splitter its
- * creator fees accrue in) or Clanker v4 on Base. Recorded once the launch tx's receipt is checked (lib/launch/token.ts).
+ * An agent's own token: a GRC20 its owner opened from their own Adena account through gno.land's GRC20 factory
+ * (gno.land/r/demo/defi/grc20factory). `address` is "<factory>:<symbol>", the token's unique id. Recorded once the
+ * launch transaction's events are checked (lib/launch/token.ts).
  */
 export const vAgentToken = v.object({
-  chain: v.union(v.literal("arc"), v.literal("base")),
+  chain: vChain,
   address: v.string(),
-  splitter: v.optional(v.string()),
+  symbol: v.string(),
   launchTx: v.string(),
 });
+/** A wallet Mimir holds for an agent: its address and the sealed mnemonic (lib/server/gno-wallets.ts). */
+export const vSealedWallet = v.object({ address: v.string(), sealed: v.string() });
 
 export const status = v.union(
   v.literal("open"),
@@ -71,12 +73,9 @@ export default defineSchema({
     eligibleB: v.optional(v.string()),
     /** Disputed by the owner's veto (ResolutionDisputed with a zero disputer), not a participant's bond. */
     vetoed: v.optional(v.boolean()),
-    /** Linked markets (lib/chains/linked.ts): the same question opened by Mimir's agents on several chains share this. */
-    pairKey: v.optional(v.string()),
     updatedBlock: v.number(),
   })
     .index("by_market", ["chain", "kind", "marketId"])
-    .index("by_pair", ["pairKey"])
     .index("by_deadline", ["deadline"])
     .index("by_creator", ["creator"])
     // The oracle and the views read by state, oldest deadline first, instead of scanning every market.
@@ -86,7 +85,7 @@ export default defineSchema({
     chain,
     kind,
     marketId: v.number(),
-    /** Lowercase Arc address (the user's wallet). */
+    /** Lowercase g1 address (the user's account). */
     user: v.string(),
     side: v.number(),
     amount: v.string(),
@@ -132,74 +131,16 @@ export default defineSchema({
     decided: v.optional(v.number()),
     /** The decision's own summary when `summary` is an override's. */
     decidedSummary: v.optional(v.string()),
-    /** The market's link (lib/chains/linked.ts): linked markets reuse the first decision. */
-    pairKey: v.optional(v.string()),
     confidence: v.number(),
     summary: v.string(),
     evidenceHash: v.string(),
     bundle: v.string(),
     txHash: v.string(),
-  }).index("by_market", ["chain", "kind", "marketId"]).index("by_pair", ["pairKey"]),
-
-  /** A market Mimir's agents opened on several chains: one row per chain's market, the shared pairKey links them. */
-  marketLinks: defineTable({
-    pairKey: v.string(),
-    chain: vChain,
-    kind,
-    marketId: v.number(),
-    at: v.number(),
-  }).index("by_market", ["chain", "kind", "marketId"]).index("by_pair", ["pairKey"]),
+  }).index("by_market", ["chain", "kind", "marketId"]),
 
   /**
-   * The oracle's one decision per linked pair (lib/chains/linked.ts), saved right after the model decided and before
-   * any leg proposes it: every leg (the deciding one included, on a retry) reuses it instead of deciding again.
-   */
-  arcPairDecisions: defineTable({
-    pairKey: v.string(),
-    /** The leg it was decided on. */
-    chain: vChain,
-    kind,
-    marketId: v.number(),
-    side: v.number(),
-    confidence: v.number(),
-    summary: v.string(),
-    evidenceHash: v.string(),
-    bundle: v.string(),
-    at: v.number(),
-  }).index("by_pair", ["pairKey"]),
-
-  /**
-   * The twin reconciler's work (convex/arcTwins.ts, lib/chains/twins.ts): one row per (source market, target chain).
-   * sending → sent (tx known) → linked; or skipped (final) / failed (retried after notBefore, a few times).
-   */
-  marketTwins: defineTable({
-    srcChain: vChain,
-    srcMarketId: v.number(),
-    chain: vChain,
-    pairKey: v.string(),
-    /** The source's creator (lowercase), for the per-creator daily cap. */
-    creator: v.string(),
-    house: v.boolean(),
-    status: v.union(v.literal("waiting"), v.literal("sending"), v.literal("sent"), v.literal("linked"), v.literal("skipped"), v.literal("failed")),
-    reason: v.optional(v.string()),
-    tx: v.optional(v.string()),
-    marketId: v.optional(v.number()),
-    /** The seed stake, index units. */
-    seed: v.optional(v.string()),
-    /** The UTC day it was opened on ("2026-11-01"). */
-    day: v.optional(v.string()),
-    attempts: v.number(),
-    /** ms: not looked at again before this. */
-    notBefore: v.number(),
-    at: v.number(),
-  })
-    .index("by_source", ["srcChain", "srcMarketId", "chain"])
-    .index("by_status", ["status"])
-    .index("by_creator_day", ["creator", "day"]),
-
-  /**
-   * The house creator's spend, one budget shared by every chain (convex/houseBudget.ts): each market the house opens
-   * (its own drafts and twins) reserves its seed here before it is sent; a failed send releases it.
+   * The house creator's daily spend (convex/houseBudget.ts): each market the house opens reserves its seed here
+   * before it is sent; a failed send releases it.
    */
   houseSpend: defineTable({ day: v.string(), chain: vChain, wei: v.string(), ref: v.string(), at: v.number() }).index("by_day", ["day"]),
 
@@ -213,7 +154,7 @@ export default defineSchema({
     lastError: v.optional(v.string()),
   }).index("by_market", ["chain", "kind", "marketId"]),
 
-  /** Council persona decisions on Arc markets (convex/arcCouncil.ts); `until` (ms) is when the persona may look again. */
+  /** Council persona decisions on markets (convex/arcCouncil.ts); `until` (ms) is when the persona may look again. */
   arcCouncilDecisions: defineTable({
     slug: v.string(),
     chain,
@@ -247,7 +188,7 @@ export default defineSchema({
     creator: v.optional(v.string()),
   }).index("by_market", ["chain", "kind", "marketId"]),
 
-  /** One row per indexer (name = the chain id, "arc" or "base"): the last block fully applied. */
+  /** One row per indexer (name "gno"): the last block whose events are applied. */
   arcCursor: defineTable({ name: v.string(), block: v.number() }).index("by_name", ["name"]),
 
   discoveryFollows: defineTable({ owner: v.string(), target: v.string(), at: v.number() }).index("by_owner", ["owner"]).index("by_owner_target", ["owner", "target"]),
@@ -277,7 +218,7 @@ export default defineSchema({
 
   /**
    * The app's own records, once Postgres tables (convex/appStore.ts, lib/server/store.ts): agents and their API
-   * keys, nonces and replies, baskets, copy permissions, invites, Arc account bindings, Telegram chats, the campaign,
+   * keys, nonces and replies, baskets, copy permissions, invites, account bindings, Telegram chats, the campaign,
    * rate-limit counters and the wallet relay. One row per record: `t` is the old table name, `k` its primary key,
    * `d` the row with the old column names, `i1`/`i2` the one or two columns a table is looked up by (an owner, a
    * follower, a status). Every write goes through a secret-checked mutation; conditional writes are atomic there.
@@ -296,15 +237,15 @@ export default defineSchema({
     .index("by_at", ["t", "at"]),
 
   /**
-   * Mimir Launch (lib/launch): hosted agents. Free to create and live at once. Each stakes on Mimir markets from its Arc
-   * wallet (Circle developer-controlled, funded by its owner in USDC; it pays its own gas) and may open its own markets.
-   * It never trades tokens. Its optional token is launched by the owner's own wallet, so its fees go to the owner.
+   * Mimir Launch (lib/launch): hosted agents. Free to create and live at once. Each stakes on Mimir markets from its own
+   * gno.land account (a key Mimir generated and keeps sealed, funded by its owner with mUSD and a little GNOT for gas)
+   * and may open its own markets. It never trades tokens. Its optional token is launched by the owner's own wallet.
    * Market rules are validated in lib/launch before they are stored. A sealed own-key brain never leaves the server
    * (lib/launch/byok.ts).
    */
   launchAgents: defineTable({
     slug: v.string(),
-    /** The owner's EVM address (checksummed): who created it, who withdrawals go to, who launches its token. */
+    /** The owner's g1 address (lowercase): who created it, who withdrawals go to, who launches its token. */
     owner: v.string(),
     name: v.string(),
     ticker: v.string(),
@@ -315,23 +256,19 @@ export default defineSchema({
       v.object({ kind: v.literal("mimir") }),
       v.object({ kind: v.literal("byok"), provider: v.string(), sealed: v.string(), last4: v.string(), model: v.string() }),
     ),
-    /** Arc markets (lib/launch/markets MarketRules) and the most it may have staked at once, USDC. */
+    /** Markets (lib/launch/markets MarketRules) and the most it may have staked at once, mUSD. */
     markets: v.object({
       enabled: v.boolean(), rules: v.any(), budgetUsdc: v.number(),
-      /** Opening its own markets (lib/launch/agent-markets.ts): off unless the owner turns it on; gas from its Arc wallet. */
+      /** Opening its own markets (lib/launch/agent-markets.ts): off unless the owner turns it on; gas from its wallet. */
       create: v.optional(v.object({ enabled: v.boolean(), perDay: v.number() })),
     }),
-    arc: v.optional(v.object({ walletId: v.string(), address: v.string() })),
-    /**
-     * Its Base wallet (Circle, blockchain BASE / BASE-SEPOLIA): stakes on Base markets. Pays gas in ETH, which the owner
-     * or Mimir sends it (no gas station); made at creation when Base is enabled, else on first use (lib/launch/flow.ts).
-     */
-    base: v.optional(v.object({ walletId: v.string(), address: v.string() })),
-    /** Its token, once its owner launched one (Argus on Arc or Clanker on Base). */
+    /** Its gno.land account (absent for a council persona, whose key is GNO_COUNCIL_MNEMONICS). */
+    gno: v.optional(vSealedWallet),
+    /** Its GRC20, once its owner launched one. */
     token: v.optional(vAgentToken),
     /** Random id bound into the sealed BYOK key (lib/launch/byok AAD), fixed for the agent's life. */
     uid: v.string(),
-    /** A council persona (agents/council): Mimir's own agent, its Arc wallet is the council's Circle wallet. */
+    /** A council persona (agents/council): Mimir's own agent, its account is the council's (lib/chains/house.ts). */
     house: v.optional(v.string()),
     createdAt: v.number(),
     /** One spender per agent wallet (convex/launchAgentsDb.ts); when its market tick last ran. */
@@ -349,11 +286,11 @@ export default defineSchema({
     at: v.number(),
     kind: v.string(),
     text: v.string(),
-    chain: v.optional(v.union(v.literal("arc"), v.literal("base"))),
+    chain,
     tx: v.optional(v.string()),
   }).index("by_agent", ["agent", "at"]),
 
-  /** Mimir API (lib/launch/paid-call.ts): one row per payment tx ("<chain>:<tx>"), so a tx buys one call. */
+  /** Mimir API (lib/launch/paid-call.ts): one row per payment tx ("gno:<tx>"), so a tx buys one call. */
   agentApiPayments: defineTable({
     key: v.string(),
     /** The agent's slug (a launched agent or a council persona). */
@@ -364,13 +301,10 @@ export default defineSchema({
     done: v.optional(v.boolean()),
   }).index("by_key", ["key"]).index("by_agent", ["agent", "at"]),
 
-  /** Markets an agent opened on Mimir from its Arc wallet (its seed stake backs `side`). */
+  /** Markets an agent opened on Mimir from its wallet (its seed stake backs `side`). */
   launchMarkets: defineTable({
     agent: v.id("launchAgents"),
-    /** The chain it opened on (absent = Arc, before Base). */
     chain,
-    /** Set when the same draft was opened on several chains (lib/chains/linked.ts). */
-    pairKey: v.optional(v.string()),
     at: v.number(),
     question: v.string(),
     category: v.string(),
@@ -382,7 +316,7 @@ export default defineSchema({
     why: v.string(),
   }).index("by_agent", ["agent", "at"]),
 
-  /** Stakes on Mimir markets from the agent's Arc wallet. */
+  /** Stakes on Mimir markets from the agent's wallet. */
   launchStakes: defineTable({
     agent: v.id("launchAgents"),
     chain,
@@ -401,15 +335,13 @@ export default defineSchema({
 
   /**
    * Copy staking (lib/launch/copy-stake.ts): one per (agent, follower). `agent` is a launch agent's or a council persona's
-   * copy key (lib/launch/copy-key.ts). The follower's Circle copy wallet on Arc stakes the same side as the agent; a
-   * stopped subscription takes no new stakes.
+   * copy key (lib/launch/copy-key.ts). The follower's copy wallet (a gno.land key Mimir holds sealed, funded by the
+   * follower with mUSD and GNOT) stakes the same side as the agent; a stopped subscription takes no new stakes.
    */
   launchCopies: defineTable({
     agent: v.string(),
     follower: v.string(),
-    arc: v.optional(v.object({ walletId: v.string(), address: v.string(), maxPerStakeUsdc: v.number(), on: v.boolean() })),
-    /** The follower's Base copy wallet: copies of the leader's Base stakes go from here (ETH for gas, USDC). */
-    base: v.optional(v.object({ walletId: v.string(), address: v.string(), maxPerStakeUsdc: v.number(), on: v.boolean() })),
+    gno: v.optional(v.object({ address: v.string(), sealed: v.string(), maxPerStakeUsdc: v.number(), on: v.boolean() })),
     active: v.boolean(),
     pausedReason: v.optional(v.string()),
     createdAt: v.number(),

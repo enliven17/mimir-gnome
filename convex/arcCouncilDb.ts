@@ -14,7 +14,7 @@ export const standing = internalQuery({
   handler: async (ctx, { now }) => {
     await assertMarketDeployment(ctx);
     const rows = await ctx.db.query("arcCouncilDecisions").withIndex("by_until", (q) => q.gt("until", now)).take(4000);
-    return rows.map((r) => `${r.slug}:${r.chain ?? "arc"}:${r.kind}:${r.marketId}`);
+    return rows.map((r) => `${r.slug}:${r.chain ?? "gno"}:${r.kind}:${r.marketId}`);
   },
 });
 
@@ -51,7 +51,7 @@ export const record = internalMutation({
 /** What the council thought about one market: shown on its page. */
 export const forMarket = query({
   args: { chain: chainArg, kind, marketId: v.number() },
-  handler: async (ctx, { chain = "arc", kind, marketId }) =>
+  handler: async (ctx, { chain = "gno", kind, marketId }) =>
     {
     await assertMarketDeployment(ctx);
     return (await ctx.db.query("arcCouncilDecisions").withIndex("by_market", (q) => q.eq("chain", chain).eq("kind", kind).eq("marketId", marketId)).collect())
@@ -67,7 +67,7 @@ export const takenMarkets = internalQuery({
   handler: async (ctx) =>
     {
     await assertMarketDeployment(ctx);
-    return (await ctx.db.query("arcMarketTakes").order("desc").take(5000)).map((t) => ({ key: `${t.chain ?? "arc"}:${t.kind}:${t.marketId}`, creator: t.creator ?? "", slug: t.slug, at: t.at }));
+    return (await ctx.db.query("arcMarketTakes").order("desc").take(5000)).map((t) => ({ key: `${t.chain ?? "gno"}:${t.kind}:${t.marketId}`, creator: t.creator ?? "", slug: t.slug, at: t.at }));
   },
 });
 
@@ -87,7 +87,7 @@ export const saveTake = internalMutation({
 /** The council's take on one market, shown under it. */
 export const takeFor = query({
   args: { chain: chainArg, kind, marketId: v.number() },
-  handler: async (ctx, { chain = "arc", kind, marketId }) =>
+  handler: async (ctx, { chain = "gno", kind, marketId }) =>
     {
     await assertMarketDeployment(ctx);
     return (await ctx.db.query("arcMarketTakes").withIndex("by_market", (q) => q.eq("chain", chain).eq("kind", kind).eq("marketId", marketId)).first()) ?? null;

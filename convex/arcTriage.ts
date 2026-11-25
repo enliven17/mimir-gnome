@@ -23,7 +23,7 @@ export const all = internalQuery({
     {
     await assertMarketDeployment(ctx);
     return (await ctx.db.query("arcTriage").order("desc").take(5000)).map(({ chain, kind, marketId, resolvable, spam, category, categoryConfidence }) => ({
-      key: `${chain ?? "arc"}:${kind}:${marketId}`, resolvable, spam, category, categoryConfidence,
+      key: `${chain ?? "gno"}:${kind}:${marketId}`, resolvable, spam, category, categoryConfidence,
     }));
   },
 });
@@ -31,7 +31,7 @@ export const all = internalQuery({
 /** One market's triage, or null (Jev off, or not triaged yet). */
 export const of = query({
   args: { chain: v.optional(vChain), kind, marketId: v.number() },
-  handler: async (ctx, { chain = "arc", kind, marketId }) =>
+  handler: async (ctx, { chain = "gno", kind, marketId }) =>
     {
     await assertMarketDeployment(ctx);
     return (await ctx.db.query("arcTriage").withIndex("by_market", (q) => q.eq("chain", chain).eq("kind", kind).eq("marketId", marketId)).first()) ?? null;
