@@ -1,8 +1,8 @@
 # mimir-terminal
 
-Mimir in your own terminal. Live prediction markets come from [Mimir](https://mimirmarkets.xyz): they settle on Arc,
-Circle's stablecoin chain, staked from any EVM wallet. The agents run on **your** side, on your own AI or
-your own code. Nothing to register, and Mimir's AI is never called.
+Mimir in your own terminal. Live prediction markets come from [Mimir](https://mimirmarkets.xyz): they settle on
+[gno.land](https://gno.land), staked in mUSD (a GRC20 with 6 decimals) from an Adena wallet, with GNOT for gas. The
+agents run on **your** side, on your own AI or your own code. Nothing to register, and Mimir's AI is never called.
 
 ```sh
 npm i -g mimir-terminal
@@ -16,6 +16,7 @@ Or without installing: `npx mimir-terminal`. Node 18.17+, no dependencies.
 ```
 markets [live|closing|settled|vs|pool|crypto|sports]   list markets with odds
 market <id>                                            one market in full (vs-12, pool-3); agents then answer about it
+faucet                                                 where testnet mUSD (stakes) and GNOT (gas) come from
 agents                                                 your agents and the house council
 use <agent>                                            talk to an agent: plain text goes to it
 ask <agent> <question>                                 one question, no switching
@@ -72,8 +73,8 @@ mimir agent add py exec python my_agent.py                             # a local
   "message": "is vs-12 worth a challenge?",
   "history": [{ "role": "user", "text": "…" }, { "role": "agent", "text": "…" }],
   "context": {
-    "market": { "id": "vs-12", "question": "…", "sideA": { "label": "Yes", "usdc": "1" }, "sideB": { "label": "No", "usdc": "0.1" }, "…": "…" },
-    "markets": ["vs-12 [open] Will … | Yes: 1 USDC (91%) vs No: 0.1 USDC (9%), 2 participant(s) | 18h left"]
+    "market": { "id": "vs-12", "question": "…", "sideA": { "label": "Yes", "musd": "1" }, "sideB": { "label": "No", "musd": "0.1" }, "…": "…" },
+    "markets": ["vs-12 [open] Will … | Yes: 1 mUSD (91%) vs No: 0.1 mUSD (9%), 2 participant(s) | 18h left"]
   },
   "wallet": null
 }
@@ -89,7 +90,7 @@ process.stdin.on("data", (d) => (input += d)).on("end", () => {
   const { context } = JSON.parse(input);
   const m = context.market;
   const reply = m
-    ? `${m.id}: ${Number(m.sideB.usdc) === 0 ? "nobody has taken the other side yet." : "already contested."}`
+    ? `${m.id}: ${Number(m.sideB.musd) === 0 ? "nobody has taken the other side yet." : "already contested."}`
     : `${context.markets.length} markets are open. Ask about one by id.`;
   console.log(JSON.stringify({ reply }));
 });
@@ -113,5 +114,7 @@ The link is saved (the key is not, only the env var's name). While `mimir` is op
 and your agent shows **Live** on https://mimirmarkets.xyz/agents. Close it and the badge turns **Offline** within 5
 minutes. `connect` alone checks the link; `disconnect` removes it.
 
-The CLI reads; it never moves money. To stake on a market, open it on https://mimirmarkets.xyz with your EVM
-wallet, or trade from your own agent through the agent API (it returns unsigned Arc transactions your agent signs).
+The CLI reads; it never moves money. To stake on a market, open it on https://mimirmarkets.xyz with your Adena
+wallet, or trade from your own agent through the agent API: it returns unsigned gno.land MsgCall messages your agent
+signs as one transaction with its own key (a runnable example: `examples/gno-agent/agent.mjs` in the repo). Testnet
+mUSD comes from the mUSD realm's daily faucet (1,000 a day), GNOT for gas from https://faucet.gno.land.

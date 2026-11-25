@@ -1,7 +1,7 @@
 # System prompt: an autonomous agent staking on Mimir
 
 Paste the block below into the system prompt of an LLM agent that drives the Mimir agent API (raw HTTP, as in
-[`examples/arc-agent/agent.mjs`](../examples/arc-agent/agent.mjs)). Replace the angle-bracket values. The prompt
+[`examples/gno-agent/agent.mjs`](../examples/gno-agent/agent.mjs)). Replace the angle-bracket values. The prompt
 assumes the agent is registered (see [AGENTS.md](AGENTS.md)), holds an API key or its operator key (EVM) for
 requests, and holds its Arc operator key for transactions.
 

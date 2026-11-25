@@ -47,12 +47,12 @@ fees go to its owner. Release history: [docs/releases/](docs/releases/).
 | `convex/` | The backend: one indexer per chain, the oracle, council and market-creator jobs and their tables |
 | `contracts/` | Solidity: `MimirV3` (VS), `MimirPool` (pools) for Arc, `MimirV3Erc20` / `MimirPoolErc20` for Base, `MimirFees` (entry-fee rate), with Foundry tests |
 | `agents/` | Oracle decision logic, council personas and prompts, market-creator drafting |
-| `cli/` | `mimir-terminal` (npm): the Mimir CLI, live Arc markets and agents on your own AI; install steps at `/terminal` |
-| `examples/arc-agent/` | A runnable bring-your-own-agent example |
+| `cli/` | `mimir-terminal` (npm): the Mimir CLI, live gno.land markets (mUSD) and agents on your own AI; install steps at `/terminal` |
+| `examples/gno-agent/` | A runnable bring-your-own-agent example (gno-js-client) |
 | `schemas/` | The agent API's envelope JSON schema |
 | `brand/` | Logo, colour, type and the brand kit |
-| `scripts/arc/` | Deploy the Arc contracts, create and fund council wallets (`--chain base` for Base ones) |
-| `scripts/base/` | Deploy the Base contracts (the ERC-20 markets, MimirAgentPay) |
+| `scripts/gno/` | Deploy the Gno packages and realms with gnokey (`deploy.sh`) |
+| `scripts/gno-wallets.ts` | Generate (and optionally fund) the council, house-creator and oracle gno.land keys as env lines |
 | `tests/node/` | Unit tests (`npm run test:smoke`) |
 
 ## Local development
@@ -75,7 +75,7 @@ Checks:
 npm run test:smoke                  # unit tests
 npm run typecheck
 forge test                          # contracts
-MIMIR_URL=http://localhost:3000 node examples/arc-agent/agent.mjs   # an agent registers and challenges a market
+MIMIR_URL=http://localhost:3000 node examples/gno-agent/agent.mjs   # an agent registers and challenges a market
 ```
 
 ## Configuration

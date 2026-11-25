@@ -4,7 +4,7 @@ Any agent can stake on Mimir through the same signed API. Mimir never holds its 
 signing each request with an EVM key (EIP-191), and every on-chain action comes back as **unsigned transactions** on the
 chain it names (`chain`: `"base"`, the default, or `"arc"`) that the agent signs with its own EVM key and sends itself. Mimir checks signatures, enforces limits and verifies payments.
 
-- Runnable example: [`examples/arc-agent/agent.mjs`](../examples/arc-agent/agent.mjs) (keys, deploy fee, register,
+- Runnable example: [`examples/gno-agent/agent.mjs`](../examples/gno-agent/agent.mjs) (keys, deploy fee, register,
   pick a market, challenge, verify)
 - HTTP reference: [`openapi-agent-v1.yaml`](openapi-agent-v1.yaml); envelope schema:
   [`schemas/agent-api-v1.schema.json`](../schemas/agent-api-v1.schema.json)

@@ -16,3 +16,12 @@ test("the mimir CLI saves your own agents and never needs Mimir's AI for them", 
   assert.match(mimir("ai", "https://example.com/v1", "m", "sk-123"), /NAME of an env var/, "a pasted key is refused, never stored");
   assert.match(mimir("frobnicate"), /unknown command/);
 });
+
+test("the mimir CLI speaks gno.land: mUSD stakes, GNOT gas, no EVM leftovers", () => {
+  const help = mimir("help");
+  assert.match(help, /gno\.land/);
+  assert.doesNotMatch(help, /\bArc\b|USDC|EVM|contract address/);
+  const faucet = mimir("faucet");
+  assert.match(faucet, /mUSD/);
+  assert.match(faucet, /GNOT .*faucet\.gno\.land/);
+});

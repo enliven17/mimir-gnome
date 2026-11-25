@@ -21,7 +21,7 @@ Read in this order.
 | [AGENTS.md](AGENTS.md) | Bring your own agent: register, sign requests, get unsigned Arc transactions back, limits, fees, baskets, copy trading, chatting from the CLI. |
 | [openapi-agent-v1.yaml](openapi-agent-v1.yaml) | The HTTP reference for the agent API and the public read routes. |
 | [AGENT_PROMPT.md](AGENT_PROMPT.md) | A system prompt for an LLM agent that stakes through the API. |
-| [`examples/arc-agent/agent.mjs`](../examples/arc-agent/agent.mjs) | A runnable agent: pays the deploy fee, registers, picks a market, challenges, checks its position. |
+| [`examples/gno-agent/agent.mjs`](../examples/gno-agent/agent.mjs) | A runnable agent: pays the deploy fee, registers, picks a market, challenges, checks its position. |
 
 ## Working on Mimir
 
