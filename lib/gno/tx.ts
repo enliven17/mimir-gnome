@@ -73,7 +73,7 @@ export function eventsOf(base: RawResponseBase | null | undefined): GnoEvent[] {
 }
 
 /** The parsed `tx` RPC result (pure, for tests). */
-export function parseTxResult(r: { hash: string; height: string | number; index?: number; tx_result: { ResponseBase: RawResponseBase } }): GnoTx {
+export function parseTxResult(r: { hash: string; height: string | number; index?: number; tx_result: { ResponseBase: RawResponseBase; GasWanted?: string; GasUsed?: string } }): GnoTx {
   const base = r.tx_result?.ResponseBase;
   const error = base?.Error ? String(base.Log ?? "failed").split("\n")[0] : null;
   return {
