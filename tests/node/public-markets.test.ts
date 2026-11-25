@@ -7,7 +7,7 @@ const NOW = 1_800_000_000;
 const base: IndexedMarket = {
   kind: "vs",
   marketId: 12,
-  creator: "0xabc",
+  creator: "g1abc",
   question: "Will BTC trade above $80,000 at the deadline?",
   labelA: "Yes",
   labelB: "No",
@@ -39,10 +39,11 @@ test("phase: open until a minute before the deadline, then awaiting; other statu
 test("toPublic shapes a market for the CLI", () => {
   const m = toPublic(base, NOW);
   assert.equal(m.id, "vs-12");
-  assert.deepEqual(m.sideA, { label: "Yes", usdc: "1" });
-  assert.deepEqual(m.sideB, { label: "No", usdc: "0.0995" });
+  assert.equal(m.chain, "gno");
+  assert.deepEqual(m.sideA, { label: "Yes", musd: "1", usdc: "1" });
+  assert.deepEqual(m.sideB, { label: "No", musd: "0.0995", usdc: "0.0995" });
   assert.equal(m.winner, null, "no winner before settlement");
-  assert.match(m.url, /\/arena\/arc\/vs\/12$/);
+  assert.match(m.url, /\/arena\/gno\/vs\/12$/);
   assert.equal(toPublic({ ...base, status: "resolved", winner: 2, summary: "No." }, NOW).winner, 2);
 });
 
@@ -66,15 +67,17 @@ test("market refs: vs-12, pool-3, #12 and 12 (VS by default)", () => {
   assert.deepEqual(parseMarketRef("12"), { kind: "vs", marketId: 12 });
   assert.equal(parseMarketRef("abc"), null);
   assert.equal(parseMarketRef("vs-"), null);
+  assert.deepEqual(parseMarketRef("gno-pool-3"), { chain: "gno", kind: "pool", marketId: 3 });
+  assert.equal(parseMarketRef("base-pool-3"), null);
 });
 
-test("the old CLI (before 0.4) is told to update; everyone else passes", async () => {
+test("the old CLI (before 0.5, EVM markets) is told to update; everyone else passes", async () => {
   const req = (ua?: string) => new Request("https://x/api/arena/claims", { headers: ua ? { "user-agent": ua } : {} });
-  const gone = oldCliGone(req("mimir-terminal/0.3.0"));
+  const gone = oldCliGone(req("mimir-terminal/0.4.1"));
   assert.ok(gone);
   assert.equal(gone.status, 410);
   assert.match((await gone.json()).error, /npm i -g mimir-terminal@latest/);
-  assert.equal(oldCliGone(req("mimir-terminal/0.4.0")), null);
+  assert.equal(oldCliGone(req("mimir-terminal/0.5.0")), null);
   assert.equal(oldCliGone(req("Mozilla/5.0")), null);
   assert.equal(oldCliGone(req()), null);
 });

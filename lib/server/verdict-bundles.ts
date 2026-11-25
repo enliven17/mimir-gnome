@@ -7,9 +7,9 @@
  */
 import { isDbEnabled, query } from "./db";
 import { sealBundle, type VerdictBundle } from "../verdict-bundle";
-import { ARC } from "../arc/config";
+import { MARKET_CHAINS } from "../chains/registry";
 
-const IS_MAINNET = ARC.network === "mainnet";
+const IS_MAINNET = MARKET_CHAINS.chains.gno.network === "mainnet";
 
 /**
  * Stores the bundle; returns its hash. Without a database: a no-op (still

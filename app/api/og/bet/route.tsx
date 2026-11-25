@@ -65,7 +65,7 @@ export async function GET(req: Request) {
         <img src={horn} width={210} height={230} style={{ position: "absolute", right: 76, top: 92, opacity: 0.9 }} />
         <div style={{ display: "flex", flexDirection: "column", width: 820, height: "100%" }}>
           <div style={{ display: "flex", fontFamily: "Mono", fontSize: 20, letterSpacing: 4, color: MUTED }}>
-            {`${q.chain === "base" ? "BASE · " : ""}${q.kind.toUpperCase()} #${q.id} · ${m.category.toUpperCase()}`}
+            {`${q.kind.toUpperCase()} #${q.id} · ${m.category.toUpperCase()}`}
           </div>
           <div style={{ display: "flex", marginTop: 20, fontFamily: "Display", fontSize: 84, lineHeight: 0.92 }}>
             I took <span style={{ color: RED, marginLeft: 22 }}>{clamp(mine, 18)}</span>

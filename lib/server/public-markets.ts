@@ -1,8 +1,7 @@
 /**
- * The public read of Mimir markets on every chain (GET /api/markets, /api/markets/[kind]/[id]?chain=): the shape the
- * CLI and any outside reader gets, built from the backend index. USDC amounts are decimal strings (the index keeps
- * 18-dp units on every chain, lib/chains/amounts.ts). `id` is "<kind>-<n>" on Arc (as before Base) and
- * "base-<kind>-<n>" on Base: market numbers repeat across chains.
+ * The public read of Mimir markets on gno.land (GET /api/markets, /api/markets/[kind]/[id]): the shape the CLI and any
+ * outside reader gets, built from the backend index. mUSD amounts are decimal strings (the index keeps 18-dp units,
+ * lib/chains/amounts.ts), under `musd` and, for older readers, the same value under `usdc`. `id` is "<kind>-<n>".
  */
 import { LOCK_SECONDS } from "@/lib/arc/markets";
 import { arcMarketUrl } from "@/lib/telegram";
@@ -13,8 +12,7 @@ export type MarketPhase = "open" | "awaiting" | "proposed" | "disputed" | "resol
 export type MarketFilter = "live" | "closing" | "settled" | "all";
 
 export interface IndexedMarket {
-  /** Absent on Arc rows indexed before Base. */
-  chain?: "arc" | "base";
+  chain?: "gno";
   kind: MarketKind;
   marketId: number;
   creator: string;
@@ -35,14 +33,14 @@ export interface IndexedMarket {
 
 export interface PublicMarket {
   id: string;
-  chain: "arc" | "base";
+  chain: "gno";
   kind: MarketKind;
   marketId: number;
   question: string;
   category: string;
   /** VS: A is the creator's side, B the challengers'. Pool: two open sides. */
-  sideA: { label: string; usdc: string };
-  sideB: { label: string; usdc: string };
+  sideA: { label: string; musd: string; usdc: string };
+  sideB: { label: string; musd: string; usdc: string };
   participants: number;
   creator: string;
   deadline: number;
@@ -56,7 +54,7 @@ export interface PublicMarket {
 
 const WEI = 10n ** 18n;
 
-/** 18-decimal wei as a USDC decimal string, trailing zeros trimmed ("1.5", "0.0995"). */
+/** 18-decimal index units as an mUSD decimal string, trailing zeros trimmed ("1.5", "0.0995"). */
 export function usdc(wei: string): string {
   const v = BigInt(wei || "0");
   const whole = v / WEI;
@@ -72,7 +70,7 @@ export function phaseOf(m: Pick<IndexedMarket, "status" | "deadline">, now: numb
 export function toPublic(m: IndexedMarket, now: number): PublicMarket {
   const phase = phaseOf(m, now);
   const settled = phase === "resolved" || phase === "cancelled";
-  const chain = m.chain ?? "arc";
+  const chain = "gno" as const;
   return {
     id: marketRef(chain, m.kind, m.marketId),
     chain,
@@ -80,8 +78,8 @@ export function toPublic(m: IndexedMarket, now: number): PublicMarket {
     marketId: m.marketId,
     question: m.question,
     category: m.category,
-    sideA: { label: m.labelA, usdc: usdc(m.stakeA) },
-    sideB: { label: m.labelB, usdc: usdc(m.stakeB) },
+    sideA: { label: m.labelA, musd: usdc(m.stakeA), usdc: usdc(m.stakeA) },
+    sideB: { label: m.labelB, musd: usdc(m.stakeB), usdc: usdc(m.stakeB) },
     participants: m.participants,
     creator: m.creator,
     deadline: m.deadline,
@@ -108,25 +106,25 @@ export function filterMarkets(list: PublicMarket[], filter: MarketFilter, now: n
 }
 
 /**
- * The published CLI before 0.4 reads a retired index: tell it to update instead of showing an empty list.
+ * The published CLI before 0.5 reads the retired EVM markets: tell it to update instead of showing stale ones.
  * Returns the response to send, or null for every other caller.
  */
 export function oldCliGone(req: Request): Response | null {
   const v = /^mimir-terminal\/0\.(\d+)\./.exec(req.headers.get("user-agent") ?? "");
-  if (!v || Number(v[1]) >= 4) return null;
+  if (!v || Number(v[1]) >= 5) return null;
   return Response.json(
-    { success: false, error: "Mimir markets now settle on Arc. Update the CLI: npm i -g mimir-terminal@latest" },
+    { success: false, error: "Mimir markets now settle on gno.land in mUSD. Update the CLI: npm i -g mimir-terminal@latest" },
     { status: 410 },
   );
 }
 
 /**
- * "vs-12", "pool-3", "12" or "#12" (VS by default, Arc) → kind and id; "base-pool-3" names a Base market. Null when it
- * isn't one. `chain` is only set when the ref names one.
+ * "vs-12", "pool-3", "12" or "#12" (VS by default) → kind and id; a "gno-" prefix is accepted. Null when it isn't one.
+ * `chain` is only set when the ref names one.
  */
-export function parseMarketRef(ref: string): { chain?: "arc" | "base"; kind: MarketKind; marketId: number } | null {
-  const m = /^(?:(arc|base)[-:])?(?:(vs|pool)[-#:]?)?#?(\d{1,9})$/i.exec(ref.trim());
+export function parseMarketRef(ref: string): { chain?: "gno"; kind: MarketKind; marketId: number } | null {
+  const m = /^(?:(gno)[-:])?(?:(vs|pool)[-#:]?)?#?(\d{1,9})$/i.exec(ref.trim());
   if (!m) return null;
-  const chain = m[1]?.toLowerCase() as "arc" | "base" | undefined;
+  const chain = m[1]?.toLowerCase() as "gno" | undefined;
   return { ...(chain ? { chain } : {}), kind: (m[2]?.toLowerCase() as MarketKind | undefined) ?? "vs", marketId: Number(m[3]) };
 }

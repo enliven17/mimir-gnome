@@ -153,7 +153,7 @@ async function onBets(chatId: number): Promise<void> {
   const lines = live.map((p) => {
     const m = p.market!;
     const side = p.side === 1 ? m.labelA : m.labelB;
-    return `• <a href="${arcMarketUrl(p.kind, p.marketId, p.chain)}">${p.chain === "base" ? "Base " : "Arc "}${p.kind === "vs" ? "VS" : "Pool"} #${p.marketId}</a> ${esc(side)}, ${p.amountUsd.toFixed(2)} USDC, closes ${new Date(m.deadline * 1000).toUTCString().slice(5, 22)} UTC`;
+    return `• <a href="${arcMarketUrl(p.kind, p.marketId, p.chain)}">${p.kind === "vs" ? "VS" : "Pool"} #${p.marketId}</a> ${esc(side)}, ${p.amountUsd.toFixed(2)} mUSD, closes ${new Date(m.deadline * 1000).toUTCString().slice(5, 22)} UTC`;
   });
   await sendTo(chatId, ["<b>Your open positions</b>", ...lines].join("\n"));
 }

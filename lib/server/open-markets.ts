@@ -6,7 +6,7 @@ import { arcMarketList } from "./arc-index";
 import { filterMarkets, toPublic, type IndexedMarket, type PublicMarket } from "./public-markets";
 
 export async function openMarkets(limit: number, now = Math.floor(Date.now() / 1000)): Promise<{ total: number; markets: PublicMarket[] }> {
-  const rows = (await arcMarketList()) as IndexedMarket[];
+  const rows = (await arcMarketList()) as unknown as IndexedMarket[];
   const live = filterMarkets(rows.map((m) => toPublic(m, now)), "live", now).sort((a, b) => a.deadline - b.deadline);
   return { total: live.length, markets: live.slice(0, limit) };
 }

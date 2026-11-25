@@ -14,15 +14,15 @@ export async function GET(req: Request) {
   const sp = new URL(req.url).searchParams;
   const chain = sp.get("chain") ?? undefined;
   const kind = sp.get("kind") ?? undefined;
-  if (chain && chain !== "arc" && chain !== "base") return NextResponse.json(null, { status: 400 });
+  if (chain && chain !== "gno") return NextResponse.json(null, { status: 400 });
   if (kind && kind !== "vs" && kind !== "pool") return NextResponse.json(null, { status: 400 });
   try {
     if (sp.get("q") === "market") {
       const id = Number(sp.get("id"));
       if (!kind || !Number.isInteger(id) || id < 0) return NextResponse.json(null, { status: 400 });
-      return NextResponse.json(await arcMarketDetail(kind as "vs" | "pool", id, (chain ?? "arc") as "arc" | "base"));
+      return NextResponse.json(await arcMarketDetail(kind as "vs" | "pool", id, "gno"));
     }
-    return NextResponse.json(await arcMarketList(kind as "vs" | "pool" | undefined, chain as "arc" | "base" | undefined), { headers: { "cache-control": "public, s-maxage=15" } });
+    return NextResponse.json(await arcMarketList(kind as "vs" | "pool" | undefined, "gno"), { headers: { "cache-control": "public, s-maxage=15" } });
   } catch (err) {
     console.error("[index] read failed:", err instanceof Error ? err.message : err);
     return NextResponse.json(null, { status: 503 });

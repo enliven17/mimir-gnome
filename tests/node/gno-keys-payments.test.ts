@@ -30,7 +30,7 @@ test("tx hashes normalize from hex and base64", () => {
 });
 
 // The shape the `tx` RPC returns on onyx-1.
-const raw = (events: unknown[], error: unknown = null) => ({
+const raw = (events: unknown[], error: unknown = null): Parameters<typeof parseTxResult>[0] => ({
   hash: "/z8KdKgp0VorXFAVNnP8oBEA49qpx3bxFluVvUsf72Y=",
   height: "1354412",
   index: 0,

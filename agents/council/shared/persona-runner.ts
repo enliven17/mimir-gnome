@@ -22,7 +22,7 @@
  * the stakes would hide the calls a persona got wrong by abstaining.
  */
 import { recordForecast } from "../../../lib/server/forecasts";
-import { ARC } from "../../../lib/arc/config";
+import { MARKET_CHAINS } from "../../../lib/chains/registry";
 import { API_FETCHERS, applyFetcherTrust } from "../../oracle/decide";
 import type { PersonaSpec } from "../personas";
 import { getOrFetchEvidence } from "./evidence-cache";
@@ -97,7 +97,7 @@ export async function evaluatePersonaForClaim(
 
   const gate = rulePersonaGate(persona, claim, {
     houseCreator: ctx.houseCreator ?? null,
-    mainnet: ctx.mainnet ?? ARC.network === "mainnet",
+    mainnet: ctx.mainnet ?? MARKET_CHAINS.chains.gno.network === "mainnet",
     mainnetOverride: RULE_PERSONAS_MAINNET,
   });
   if (gate) return gate;
