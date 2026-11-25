@@ -2,19 +2,37 @@
  * Server-side signing for keys Mimir runs itself: the oracle, the arbiter, the house and council wallets and hosted
  * agents. A key is a BIP-39 mnemonic (gnokey's default derivation); it never reaches the browser.
  *
- * sendAs signs the messages as ONE transaction and waits for it to commit, so an approve and its call land together.
+ * Server code only (Next routes, Convex node actions, scripts): never import it from a client component.
+ *
+ * send signs the messages as ONE transaction and waits for it to commit, so an approve and its call land together.
  */
-import "server-only";
-
 import { decodeTxMessages, GnoJSONRPCProvider, GnoWallet, MsgCall } from "@gnolang/gno-js-client";
 import { TransactionEndpoint } from "@gnolang/tm2-js-client";
 
 import { GNO, type GnoConfig } from "./config";
 import type { GnoMsgCall } from "./msgs";
+import { gnoTx, type GnoEvent } from "./tx";
+
+export interface SentTx {
+  txHash: string;
+  height: number;
+  /** What the transaction emitted (lib/gno/tx.ts), e.g. the id a create opened. */
+  events: GnoEvent[];
+}
 
 export interface GnoSigner {
   address: string;
-  send(messages: GnoMsgCall[], memo?: string): Promise<{ txHash: string; height: number }>;
+  send(messages: GnoMsgCall[], memo?: string): Promise<SentTx>;
+  /** A native GNOT transfer (gas money), ugnot. */
+  sendUgnot(to: string, ugnot: bigint): Promise<SentTx>;
+}
+
+type CommitResult = { hash: string; height: string };
+/** The committed tx with its events, re-read through the `tx` RPC (the broadcast reply's event encoding is the SDK's own). */
+async function sent(r: CommitResult, cfg: GnoConfig): Promise<SentTx> {
+  const txHash = r.hash.toLowerCase();
+  const tx = await gnoTx(txHash, cfg).catch(() => null);
+  return { txHash, height: Number(r.height), events: tx?.events ?? [] };
 }
 
 const wallets = new Map<string, Promise<GnoWallet>>();
@@ -52,11 +70,15 @@ export async function gnoSigner(mnemonic: string, cfg: GnoConfig = GNO): Promise
         signatures: [],
       };
       const signed = await wallet.signTransaction(tx as never, decodeTxMessages);
-      const res = (await wallet.sendTransaction(signed, TransactionEndpoint.BROADCAST_TX_COMMIT)) as unknown as {
-        hash: string;
-        height: string;
-      };
-      return { txHash: res.hash, height: Number(res.height) };
+      return sent((await wallet.sendTransaction(signed, TransactionEndpoint.BROADCAST_TX_COMMIT)) as unknown as CommitResult, cfg);
+    },
+    async sendUgnot(to, ugnot) {
+      if (ugnot <= 0n) throw new Error("Invalid amount");
+      const res = await wallet.transferFunds(to, new Map([["ugnot", Number(ugnot)]]), TransactionEndpoint.BROADCAST_TX_COMMIT, {
+        gas_wanted: BigInt(cfg.gas.wanted),
+        gas_fee: `${cfg.gas.fee}ugnot`,
+      } as never);
+      return sent(res as unknown as CommitResult, cfg);
     },
   };
 }
