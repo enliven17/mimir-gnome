@@ -66,7 +66,8 @@ export function vsSnapshot(c: VsClaim, challengers: VsChallenger[], disputeWindo
       stakeA: creatorStake.toString(),
       stakeB: totalChallengerStake.toString(),
       volumeUsd: indexToUsd(creatorStake + totalChallengerStake),
-      participants: 1 + Math.max(byUser.size, c.challengerCount ?? 0),
+      // Without the challenger list (the paged views), the realm's count of challenges stands in.
+      participants: 1 + (challengers.length ? byUser.size : (c.challengerCount ?? 0)),
       isPrivate: c.isPrivate,
       ...timing(BigInt(c.deadline), BigInt(c.proposal.proposedAt), BigInt(c.proposal.disputedAt), BigInt(disputeWindow)),
       updatedBlock: block,

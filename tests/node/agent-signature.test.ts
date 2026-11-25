@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
+import { testAccount } from "../helpers/gno-sign";
 
 import { agentRequestMessage, operatorProofMessage, type AgentEnvelope } from "../../lib/agents/api";
 import { normalizeWallet, verifyWalletSignature } from "../../lib/agents/signature";
@@ -21,34 +21,35 @@ function envelope(over: Partial<AgentEnvelope> = {}): AgentEnvelope {
   };
 }
 
-test("an EIP-191 signature over the envelope message round-trips", async () => {
-  const acct = privateKeyToAccount(generatePrivateKey());
+test("an ADR-036 SignArbitrary proof over the envelope message round-trips", async () => {
+  const acct = await testAccount();
   const message = agentRequestMessage(envelope());
   assert.ok(message.startsWith("Mimir Agent API request\n"));
-  const signature = await acct.signMessage({ message });
+  const signature = await acct.sign(message);
   assert.equal(await verifyWalletSignature({ address: acct.address, message, signature }), true);
 });
 
 test("the operator proof names the agent and the operator", async () => {
-  const acct = privateKeyToAccount(generatePrivateKey());
+  const acct = await testAccount();
   const message = operatorProofMessage("my-agent", acct.address);
   assert.equal(message, `Mimir agent operator proof\nagent: my-agent\noperator: ${acct.address}`);
-  assert.equal(await verifyWalletSignature({ address: acct.address, message, signature: await acct.signMessage({ message }) }), true);
+  assert.equal(await verifyWalletSignature({ address: acct.address, message, signature: await acct.sign(message) }), true);
 });
 
 test("a signature does not verify for another key or a tampered body", async () => {
-  const acct = privateKeyToAccount(generatePrivateKey());
-  const other = privateKeyToAccount(generatePrivateKey());
+  const acct = await testAccount();
+  const other = await testAccount();
   const env = envelope();
-  const signature = await acct.signMessage({ message: agentRequestMessage(env) });
+  const signature = await acct.sign(agentRequestMessage(env));
   assert.equal(await verifyWalletSignature({ address: other.address, message: agentRequestMessage(env), signature }), false);
   const tampered = agentRequestMessage({ ...env, body: { status: "evil" } });
   assert.equal(await verifyWalletSignature({ address: acct.address, message: tampered, signature }), false);
 });
 
-test("only EVM addresses own or operate an agent", () => {
-  const evm = "0x1111111111111111111111111111111111111111";
-  assert.equal(normalizeWallet(evm), "0x1111111111111111111111111111111111111111");
+test("only gno.land addresses own or operate an agent", () => {
+  const g1 = "g1jg8mtutu9khhfwc4nxmuhcpftf0pajdhfvsqf5";
+  assert.equal(normalizeWallet(g1.toUpperCase()), g1);
+  assert.equal(normalizeWallet("0x1111111111111111111111111111111111111111"), null, "an EVM address is refused");
   assert.equal(normalizeWallet("9xQeWvG816bUx9EPjHmaT23yvVM2ZWbrrpZb9PusVFin"), null, "a base58 key is refused");
   assert.equal(normalizeWallet(42), null);
 });
@@ -72,10 +73,10 @@ test("write params are validated before anything touches the chain", () => {
 
   const cases: Array<[Parameters<typeof parseWriteParams>[0], Record<string, unknown>]> = [
     ["challenge", { claimId: 0, stakeUsdc: 2 }],
-    ["challenge", { claimId: 1, stakeUsdc: 1 }],
+    ["challenge", { claimId: 1, stakeUsdc: 0.05 }],
     ["challenge", { claimId: "1e3", stakeUsdc: 2 }],
-    ["withdraw", { amountUsdc: -1 }],
-    ["withdraw", { amountUsdc: 1.0000001 }],
+    ["withdraw", {}],
+    ["withdraw", { claimId: -1 }],
     ["createClaim", { question: "x", creatorPosition: "a", counterPosition: "b", resolutionUrl: "http://a.b", stakeUsdc: 2, deadline: NOW_SEC + 86_400 }],
     ["createClaim", { question: "x".repeat(201), creatorPosition: "a", counterPosition: "b", resolutionUrl: "https://a.b", stakeUsdc: 2, deadline: NOW_SEC + 86_400 }],
     ["createClaim", { question: "x", creatorPosition: "a", counterPosition: "b", resolutionUrl: "https://a.b", stakeUsdc: 2, deadline: NOW_SEC + 60 }],
