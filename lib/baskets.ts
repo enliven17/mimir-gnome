@@ -281,7 +281,7 @@ export function simulateVirtualBasket(
 export interface IndexedClaim {
   id: number;
   /** The market's chain (absent = Arc). Ids repeat across chains. */
-  chain?: "arc" | "base";
+  chain?: "gno";
   creator: string;
   state: number;
   winner_side: number;
@@ -384,7 +384,7 @@ export function settlementsFromClaims(
 export interface MirrorSignal {
   claimId: number;
   /** The chain the members staked on: the copy goes there too (absent = Arc). */
-  chain?: "arc" | "base";
+  chain?: "gno";
   /** Members holding this claim, with the stake they put in. */
   members: { agentId: string; stakeUnits: string }[];
   /** What the follower would stake: the member stake, capped by the follower's cap. */
@@ -435,7 +435,7 @@ export function mirrorSignals(args: {
 
     out.push({
       claimId: c.id,
-      ...(c.chain && c.chain !== "arc" ? { chain: c.chain } : {}),
+      ...(c.chain && c.chain !== "gno" ? { chain: c.chain } : {}),
       members,
       suggestedStakeUnits: suggested.toString(),
       layer: c.delegated ? "er" : "base",

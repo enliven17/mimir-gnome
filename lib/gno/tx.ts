@@ -26,7 +26,7 @@ export interface GnoTx {
 }
 
 type RawEvent = { type?: string; pkg_path?: string; attrs?: Array<{ key?: string; value?: string }> | null };
-type RawResponseBase = { Error?: unknown; Events?: RawEvent[] | null; Log?: string };
+type RawResponseBase = { Error?: unknown; Events?: RawEvent[] | null; Log?: string; Data?: string | null; Info?: string };
 
 export class GnoRpcError extends Error {}
 

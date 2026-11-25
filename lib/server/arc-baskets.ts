@@ -1,15 +1,15 @@
 import "server-only";
 
 /**
- * Baskets and copy trading on the market chains (Arc, and Base where members stake there): the pure functions of
- * lib/baskets.ts and lib/copy-signals.ts, fed from the Convex index. Each claim keeps its chain; a copy follows it. Members resolve to the addresses that stake on Arc: a
- * persona's Circle wallet, an agent's Arc operator. Addresses are lowercase.
+ * Baskets and copy trading on gno.land: the pure functions of lib/baskets.ts and lib/copy-signals.ts, fed from the
+ * Convex index. Members resolve to the accounts that stake: a persona's gno.land account (GNO_COUNCIL_WALLETS), an
+ * agent's gno operator. Addresses are lowercase g1.
  */
 import type { IndexedClaim } from "@/lib/baskets";
 import { store } from "./store";
 import { arcChallengedBy, arcCouncilWallets, arcMarketList } from "./arc-index";
 
-// MimirV3 numbering: 0 open, 1 active, 2 resolved, 3 cancelled, 4 proposed, 5 disputed.
+// r/vs numbering: 0 open, 1 active, 2 resolved, 3 cancelled, 4 proposed, 5 disputed.
 const STATUS_OF: Record<number, string> = { 0: "open", 1: "active", 2: "resolved", 3: "cancelled", 4: "proposed", 5: "disputed" };
 const STATE_OF: Record<string, number> = { open: 0, active: 1, resolved: 2, cancelled: 3, proposed: 4, disputed: 5 };
 const units = (wei: string) => (BigInt(wei) / 1_000_000_000_000n).toString();
@@ -22,8 +22,8 @@ export async function resolveArcAgentWallets(agentIds: string[]): Promise<Map<st
   }
   const missing = agentIds.filter((id) => !map.has(id));
   if (missing.length) {
-    const rows = await store().getMany<{ agent_id: string; arc_operator: string | null; status: string }>("agent_registry", missing).catch(() => []);
-    for (const r of rows) if (r.status !== "revoked" && r.arc_operator) map.set(r.agent_id, r.arc_operator.toLowerCase());
+    const rows = await store().getMany<{ agent_id: string; gno_operator: string | null; status: string }>("agent_registry", missing).catch(() => []);
+    for (const r of rows) if (r.status !== "revoked" && r.gno_operator) map.set(r.agent_id, r.gno_operator.toLowerCase());
   }
   return map;
 }
@@ -43,7 +43,7 @@ export async function arcClaimsChallengedBy(wallets: string[], states: number[],
     resolved_at: m.status === "resolved" ? m.deadline : 0,
     max_challengers: 100,
     delegated: false,
-    // No fee on winnings on Arc (entry fees are already out of the stakes); copies add theirs at payout.
+    // No fee on winnings (entry fees are already out of the stakes); copies add theirs at payout.
     platform_fee_bps: 0,
     agent_fee_bps: 0,
     challengers: m.positions.filter((p) => p.side === 2).map((p) => ({ addr: p.user, stake: units(p.amount) })),
@@ -60,7 +60,7 @@ export async function arcClaimsChallengedBy(wallets: string[], states: number[],
 export async function arcClaimStates(ids: number[]): Promise<Map<number, { state: number; winnerSide: number }>> {
   if (!ids.length) return new Map();
   const wanted = new Set(ids);
-  const markets = await arcMarketList("vs", "arc");
+  const markets = await arcMarketList("vs", "gno");
   return new Map(
     markets.filter((m) => wanted.has(m.marketId)).map((m) => [m.marketId, { state: STATE_OF[m.status] ?? 0, winnerSide: m.winner }] as const),
   );

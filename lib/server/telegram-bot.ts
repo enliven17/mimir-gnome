@@ -236,7 +236,7 @@ async function onPublic(chatId: number, command: string): Promise<boolean> {
 async function onMarkets(chatId: number): Promise<void> {
   const { total, markets } = await openMarkets(5);
   const lines = markets.map(
-    (m) => `• <a href="${m.url}">${m.chain === "base" ? "Base " : "Arc "}${m.kind === "vs" ? "VS" : "Pool"} #${m.marketId}</a> ${esc(m.question.slice(0, 90))} · ${timeLeft(m.deadline)}`,
+    (m) => `• <a href="${m.url}">${m.kind === "vs" ? "VS" : "Pool"} #${m.marketId}</a> ${esc(m.question.slice(0, 90))} · ${timeLeft(m.deadline)}`,
   );
   const text = [
     `<b>Open markets · ${total}</b>`,
