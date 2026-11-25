@@ -15,12 +15,40 @@ type Chain = "gno";
 const chainArg = v.optional(vChain);
 const chainOf = (r: { chain?: Chain }): Chain => r.chain ?? "gno";
 
+/** Equal but for bookkeeping fields (the block it was read at). */
+function sameSnapshot(row: Record<string, unknown>, next: Record<string, unknown>): boolean {
+  const skip = new Set(["_id", "_creationTime", "updatedBlock"]);
+  const keys = new Set([...Object.keys(row), ...Object.keys(next)].filter((k) => !skip.has(k)));
+  for (const k of keys) if (row[k] !== next[k]) return false;
+  return true;
+}
+
 export const cursor = internalQuery({
   args: { name: v.optional(v.string()) },
   handler: async (ctx, { name }) =>
     {
     await assertMarketDeployment(ctx);
     return (await ctx.db.query("arcCursor").withIndex("by_name", (q) => q.eq("name", name ?? "gno")).unique())?.block ?? null;
+  },
+});
+
+/** What the indexer needs to decide what to re-read: every market's stakes and status, newest first (bounded). */
+export const indexState = internalQuery({
+  args: {},
+  handler: async (ctx) => {
+    await assertMarketDeployment(ctx);
+    const rows = await ctx.db.query("arcMarkets").order("desc").take(5000);
+    return rows.map((m) => ({ kind: m.kind, marketId: m.marketId, status: m.status, stakeA: m.stakeA, stakeB: m.stakeB }));
+  },
+});
+
+/** The accounts with an indexed position in one pool (its positions are re-read from the realm). */
+export const poolUsers = internalQuery({
+  args: { marketId: v.number() },
+  handler: async (ctx, { marketId }) => {
+    await assertMarketDeployment(ctx);
+    const legs = await ctx.db.query("arcPositions").withIndex("by_market", (q) => q.eq("chain", "gno").eq("kind", "pool").eq("marketId", marketId)).take(1000);
+    return [...new Set(legs.map((p) => p.user))];
   },
 });
 
@@ -57,8 +85,9 @@ export const apply = internalMutation({
       const participants = m.kind === "pool"
         ? new Set((await ctx.db.query("arcPositions").withIndex("by_market", (q) => q.eq("chain", c).eq("kind", "pool").eq("marketId", m.marketId)).collect()).map((p) => p.user)).size
         : m.participants;
-      // A link recorded when the agent opened it (arc.link) carries over; the snapshot itself never knows it.
       const next = { ...m, chain: c, participants };
+      // The indexer re-reads every market each run: an unchanged snapshot writes nothing.
+      if (row && sameSnapshot(row, next)) continue;
       if (row) await ctx.db.replace(row._id, next);
       else await ctx.db.insert("arcMarkets", next);
       if (!m.isPrivate && (!row || row.status !== m.status)) await ctx.db.insert("discoverySignals", { marketChain: c, marketKind: m.kind, marketId: m.marketId, category: m.category,
@@ -178,7 +207,7 @@ export const oracleWork = internalQuery({
     // gas spent on the extra ones; they stay refundable by anyone (refundExpired) once the grace period ends.
     // The house creator's own pools are exempt: their stake is ours and it should come back.
     const oneSided = (m: M) => BigInt(m.stakeA) === 0n || BigInt(m.stakeB) === 0n;
-    const house = houseCreatorWallet(c)?.address ?? null;
+    const house = houseCreatorWallet()?.address ?? null;
     const seen = new Map<string, number>();
     const spam = new Set<M["_id"]>();
     for (const m of [...undecided].sort((a, b) => a.createdAt - b.createdAt)) {
