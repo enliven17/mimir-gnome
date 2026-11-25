@@ -23,7 +23,6 @@ import type * as arcTriage from "../arcTriage.js";
 import type * as arcViews from "../arcViews.js";
 import type * as arcWatch from "../arcWatch.js";
 import type * as arcWatchDb from "../arcWatchDb.js";
-import type * as chainMigrate from "../chainMigrate.js";
 import type * as councilOpinions from "../councilOpinions.js";
 import type * as crons from "../crons.js";
 import type * as discovery from "../discovery.js";
@@ -35,7 +34,6 @@ import type * as launchCopy from "../launchCopy.js";
 import type * as launchCopyJobs from "../launchCopyJobs.js";
 import type * as launchMarkets from "../launchMarkets.js";
 import type * as launchMarketsDb from "../launchMarketsDb.js";
-import type * as launchMigrate from "../launchMigrate.js";
 import type * as marketDeployment from "../marketDeployment.js";
 import type * as marketDeploymentGuard from "../marketDeploymentGuard.js";
 
@@ -61,7 +59,6 @@ declare const fullApi: ApiFromModules<{
   arcViews: typeof arcViews;
   arcWatch: typeof arcWatch;
   arcWatchDb: typeof arcWatchDb;
-  chainMigrate: typeof chainMigrate;
   councilOpinions: typeof councilOpinions;
   crons: typeof crons;
   discovery: typeof discovery;
@@ -73,7 +70,6 @@ declare const fullApi: ApiFromModules<{
   launchCopyJobs: typeof launchCopyJobs;
   launchMarkets: typeof launchMarkets;
   launchMarketsDb: typeof launchMarketsDb;
-  launchMigrate: typeof launchMigrate;
   marketDeployment: typeof marketDeployment;
   marketDeploymentGuard: typeof marketDeploymentGuard;
 }>;
