@@ -9,18 +9,19 @@
  *
  *   {}                                   gated instructions: copy[] and skipped[]
  *   { prepare: { permissionId, claimId } }  re-gates that one copy and returns
- *                                          the unsigned Arc challenge transaction
+ *                                          the unsigned gno.land challenge messages
  *   { report: { permissionId, claimId, executed, signature?, skipReason? } }
  *                                          records the outcome in the ledger
  *
  * Nothing is staked here and no key is held: the agent signs and submits with
- * its Arc operator key. An executed report is checked against the Arc index
- * and recorded at the operator's actual stake, so the ledger the caps
- * are derived from cannot be talked down.
+ * its gno operator key (all messages as ONE transaction). An executed report
+ * is checked against the market index and recorded at the operator's actual
+ * stake, so the ledger the caps are derived from cannot be talked down.
  */
-import { zeroAddress } from "viem";
-import { ARC } from "@/lib/arc/config";
-import { stakeCall } from "@/lib/arc/markets";
+import { actionMessages } from "@/lib/chains/calls";
+import { musdAllowanceWei } from "@/lib/chains/client";
+import { MARKET_CHAINS } from "@/lib/chains/registry";
+import { normalizeTxHash } from "@/lib/gno/tx";
 import { normalizeOwner } from "@/lib/owner";
 import { arcPositions } from "@/lib/server/arc-index";
 import { getAgent } from "@/lib/agents/store";
@@ -122,7 +123,7 @@ export async function POST(req: Request): Promise<Response> {
   return json({
     ok: true,
     executionAgentId: agent.agentId,
-    signer: agent.arcOperator,
+    signer: agent.gnoOperator,
     permissions: permissions.length,
     copy: instructions
       .filter((i) => i.decision.allowed)
@@ -137,7 +138,7 @@ export async function POST(req: Request): Promise<Response> {
     // Said plainly, because an endpoint returning stake sizes could be read as
     // having already placed them.
     note:
-      "Nothing has been staked. For each copy, call again with { prepare: { permissionId, claimId } }, sign the returned transactions with the operator key, then report { report: { permissionId, claimId, executed: true, signature } }.",
+      "Nothing has been staked. For each copy, call again with { prepare: { permissionId, claimId } }, sign the returned messages as one transaction with the operator key, then report { report: { permissionId, claimId, executed: true, signature: <tx hash> } }.",
   });
 }
 
@@ -150,8 +151,9 @@ async function handlePrepare(agent: AgentRecord, permissions: CopyPermission[], 
   }
 
   // Re-gated at prepare time: the list a moment ago is advice, this is the decision.
-  if (!onArc()) return fail(503, "chain_unavailable", "Arc markets are not configured on this deployment");
-  if (!agent.arcOperator) return fail(409, "no_arc_operator", "set an Arc operator first (setArcOperator): copies are sent from it");
+  if (!onChain()) return fail(503, "chain_unavailable", "markets are not configured on this deployment");
+  const operator = agent.gnoOperator;
+  if (!operator) return fail(409, "no_gno_operator", "set a gno operator first (setGnoOperator): copies are sent from it");
   const instructions = await buildCopyInstructions([permission], executorAddress(agent));
   const instruction = instructions.find((i) => i.claimId === t.claimId);
   if (!instruction) {
@@ -204,22 +206,28 @@ async function handlePrepare(agent: AgentRecord, permissions: CopyPermission[], 
   if (reservation === null) {
     await releaseCopy(permission.id, t.claimId).catch(() => undefined);
     await recordRequest(agent.agentId, "challenge", false, "daily_cap").catch(() => undefined);
-    return fail(403, "daily_cap", `over ${agent.limits.maxDailyUsdc} USDC at risk today`);
+    return fail(403, "daily_cap", `over ${agent.limits.maxDailyUsdc} mUSD at risk today`);
   }
 
-  const referrer = await copyReferrer(permission.signalAgentId).catch(() => zeroAddress);
-  const call = stakeCall(ARC.contracts.mimirV3!, "vs", t.claimId, stakeUnits * 1_000_000_000_000n, 2, referrer);
+  const cfg = MARKET_CHAINS.chains.gno;
+  const referrer = await copyReferrer(permission.signalAgentId).catch(() => "");
+  const stake = stakeUnits * 1_000_000_000_000n;
+  const allowance = await musdAllowanceWei(operator, "vs", cfg.gno).catch(() => 0n);
+  const messages = actionMessages(operator, { type: "stake", kind: "vs", marketId: t.claimId, stake, side: 2, referrer }, allowance, cfg.gno);
   return json({
     ok: true,
-    chain: "arc",
+    chain: "gno",
+    chainId: cfg.chainId,
     permissionId: permission.id,
     claimId: t.claimId,
     stakeUsdc: instruction.decision.stakeUsdc,
     stakeUnits: stakeUnits.toString(),
-    signer: agent.arcOperator,
+    signer: operator,
     referrer,
-    transactions: [{ chainId: ARC.chain.id, to: call.to, data: call.data, value: String(call.value ?? 0n), description: `copy: challenge VS #${t.claimId}` }],
-    submit: "Sign the transaction with the Arc operator key (value is native USDC in wei), send it to Arc, then report the tx hash.",
+    messages,
+    fee: { gasWanted: String(cfg.gno.gas.wanted), gasFee: `${cfg.gno.gas.fee}ugnot` },
+    description: `copy: challenge VS #${t.claimId}`,
+    submit: `Sign every message as ONE transaction with the operator key (chain id ${cfg.chainId}), broadcast it to ${cfg.rpcUrl}, then report the tx hash.`,
   });
 }
 
@@ -243,35 +251,35 @@ async function handleReport(agent: AgentRecord, permissions: CopyPermission[], r
   }
 
   const signature = typeof r.signature === "string" ? r.signature.trim() : "";
-  if (!onArc()) return fail(503, "chain_unavailable", "Arc markets are not configured on this deployment");
-  if (signature && !/^0x[0-9a-fA-F]{64}$/.test(signature)) return fail(400, "bad_report", "signature must be the Arc tx hash");
+  if (!onChain()) return fail(503, "chain_unavailable", "markets are not configured on this deployment");
+  const txHash = signature ? normalizeTxHash(signature) : null;
+  if (signature && !txHash) return fail(400, "bad_report", "signature must be the gno.land tx hash");
   // The index is the source of truth for whether the copy landed and for how much.
-  const legs = agent.arcOperator ? await arcPositions(agent.arcOperator).catch(() => []) : [];
+  const legs = agent.gnoOperator ? await arcPositions(agent.gnoOperator).catch(() => []) : [];
   const leg = legs.find((p) => p.kind === "vs" && p.marketId === t.claimId && p.side === 2);
-  if (!leg) return fail(409, "not_on_chain", "the Arc operator holds no challenge on that market yet (the index updates within seconds)");
+  if (!leg) return fail(409, "not_on_chain", "the gno operator holds no challenge on that market yet (the index updates within seconds)");
   const stakeUsdc = unitsToUsdc(BigInt(leg.amount) / 1_000_000_000_000n);
-  const recorded = await recordExecution({ permissionId: t.permissionId, claimId: t.claimId, executed: true, stakeUsdc, txSignature: signature || null });
+  const recorded = await recordExecution({ permissionId: t.permissionId, claimId: t.claimId, executed: true, stakeUsdc, txSignature: txHash });
   await releaseCopy(t.permissionId, t.claimId).catch(() => undefined);
   return json({ ok: true, recorded: { ...t, executed: true, stakeUsdc }, duplicate: !recorded });
 }
 
-/** Copies run on Arc once its contracts are configured. */
-function onArc(): boolean {
-  return Boolean(ARC.contracts.mimirV3 && process.env.NEXT_PUBLIC_CONVEX_URL);
+/** Copies run once the gno.land realms and the index are configured. */
+function onChain(): boolean {
+  return Boolean(MARKET_CHAINS.chains.gno.enabled && process.env.NEXT_PUBLIC_CONVEX_URL);
 }
 
-/** Where the executing agent stakes from: its Arc operator. */
+/** Where the executing agent stakes from: its gno operator. */
 function executorAddress(agent: AgentRecord): string {
-  return (agent.arcOperator ?? "").toLowerCase();
+  return (agent.gnoOperator ?? "").toLowerCase();
 }
 
 /**
- * Who earns the 1% referrer share of a winning copy: the copied agent's owner (their bound Arc account, else the
- * agent's Arc operator). House personas have no owner to pay, so their copies carry no referrer and no copy fee.
+ * Who earns the 1% referrer share of a winning copy: the copied agent's owner (else the agent's gno operator). House
+ * personas have no owner to pay, so their copies carry no referrer and no copy fee ("" is no referrer).
  */
-async function copyReferrer(signalAgentId: string): Promise<`0x${string}`> {
+async function copyReferrer(signalAgentId: string): Promise<string> {
   const signal = await getAgent(signalAgentId).catch(() => null);
-  if (!signal) return zeroAddress;
-  const owner = normalizeOwner(signal.ownerWallet);
-  return (owner ?? signal.arcOperator ?? zeroAddress) as `0x${string}`;
+  if (!signal) return "";
+  return normalizeOwner(signal.ownerWallet) ?? signal.gnoOperator ?? "";
 }

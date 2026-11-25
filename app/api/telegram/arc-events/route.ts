@@ -1,6 +1,6 @@
 /**
  * POST /api/telegram/arc-events: the Convex indexer (convex/arcSync.ts) posts
- * what changed on any market chain (Base, Arc); this route turns it into Telegram messages:
+ * what changed on gno.land; this route turns it into Telegram messages:
  *   new        a market opened → every chat that wants new markets
  *   proposed   the oracle proposed a result → each participant's linked chats
  *   resolved   settled (won / lost / refunded) → each participant's linked chats
@@ -14,7 +14,6 @@ import { NextResponse } from "next/server";
 import { broadcastArcMarket, deliverArc } from "@/lib/server/telegram";
 import { arcMarketUrl, esc, type AlertPref } from "@/lib/telegram";
 import { cardTypeFor, cardUrl } from "@/lib/telegram-card";
-import { getAddress } from "viem";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -22,7 +21,7 @@ export const maxDuration = 60;
 interface ArcEvent {
   type: "new" | "proposed" | "resolved" | "cancelled";
   /** Absent from indexers older than Base: Arc. */
-  chain?: "arc" | "base";
+  chain?: "gno";
   kind: "vs" | "pool";
   marketId: number;
   question: string;
@@ -71,7 +70,7 @@ export async function POST(req: Request) {
   const { events } = (await req.json().catch(() => ({ events: [] }))) as { events?: ArcEvent[] };
   let sent = 0;
   for (const e of (events ?? []).slice(0, 50)) {
-    const chain = e.chain === "base" ? "base" : "arc";
+    const chain = "gno" as const;
     const url = arcMarketUrl(e.kind, e.marketId, chain);
     if (e.type === "new") {
       await broadcastArcMarket({ question: e.question, stakeA: e.stakeA, deadline: e.deadline, url, card: cardUrl("new", e.kind, e.marketId, undefined, undefined, chain) });
@@ -81,7 +80,7 @@ export async function POST(req: Request) {
     for (const h of e.holders.slice(0, 200)) {
       const msg = personalText(e, h.side);
       if (!msg) continue;
-      await deliverArc(getAddress(h.user), msg.text, msg.pref, url, cardUrl(cardTypeFor(e, h.side), e.kind, e.marketId, h.side, undefined, chain));
+      await deliverArc(h.user.toLowerCase(), msg.text, msg.pref, url, cardUrl(cardTypeFor(e, h.side), e.kind, e.marketId, h.side, undefined, chain));
       sent++;
     }
   }
