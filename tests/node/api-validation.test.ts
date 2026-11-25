@@ -18,13 +18,15 @@ test("parsePositiveIntegerParam rejects missing and invalid ids", () => {
   assert.equal(parsePositiveIntegerParam("abc"), null);
 });
 
-test("parseAddressParam accepts a valid EVM address", () => {
-  const address = "0x00000000000000000000000000000000000000f1";
+test("parseAddressParam accepts a valid gno.land address", () => {
+  const address = "g1jg8mtutu9khhfwc4nxmuhcpftf0pajdhfvsqf5";
   assert.equal(parseAddressParam(address), address);
+  assert.equal(parseAddressParam(` ${address.toUpperCase()} `), address);
 });
 
 test("parseAddressParam rejects malformed addresses", () => {
   assert.equal(parseAddressParam(undefined), null);
   assert.equal(parseAddressParam("not-an-address"), null);
   assert.equal(parseAddressParam("0x1234"), null);
+  assert.equal(parseAddressParam("0x00000000000000000000000000000000000000f1"), null);
 });

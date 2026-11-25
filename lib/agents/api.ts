@@ -3,7 +3,8 @@
  *
  * Every request is the same signed envelope. The body is canonicalized (keys
  * sorted, compact JSON), hashed with SHA-256, and that hash goes into a
- * human-readable message the caller signs with its EVM wallet (EIP-191). The
+ * human-readable message the caller signs with its gno.land account (Adena
+ * SignArbitrary, ADR-036; lib/owner.ts). The
  * server re-derives the hash from the body it received, so a body cannot be
  * swapped after signing and the signer can read what they are agreeing to
  * before they sign it.
@@ -34,7 +35,7 @@ export const AGENT_API_ACTIONS = [
   "register",
   "heartbeat",
   "rotateOperator",
-  "setArcOperator",
+  "setGnoOperator",
   "listClaims",
   "getClaim",
   "getBalances",
@@ -55,7 +56,7 @@ export type AgentAction = (typeof AGENT_API_ACTIONS)[number];
 export const OWNER_SIGNED_ACTIONS: AgentAction[] = [
   "register",
   "rotateOperator",
-  "setArcOperator",
+  "setGnoOperator",
   "issueKey",
   "listKeys",
   "revokeKey",

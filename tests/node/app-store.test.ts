@@ -55,8 +55,8 @@ test("agents: create once, keys revoke by prefix, the operator lookup follows a 
     assert.equal(await a.revokeApiKey("bot", "mk_1"), 1);
     assert.equal(await a.agentIdForKeyHash("h1"), null);
     assert.equal(await a.agentIdForKeyHash("h2"), "bot");
-    await a.setArcOperator("bot", "0xAbC");
-    assert.equal((await a.agentByArcOperator("0xabc"))?.agentId, "bot");
+    await a.setGnoOperator("bot", "G1ABC");
+    assert.equal((await a.agentByGnoOperator("g1abc"))?.agentId, "bot");
     await a.setAgentStatus("bot", "revoked");
     assert.equal((await a.listAgents()).length, 0);
   }));

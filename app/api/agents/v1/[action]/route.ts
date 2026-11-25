@@ -8,9 +8,9 @@
  * replayed nonce, a taken agent id or on-chain state that makes the write
  * pointless, 429 for rate limits, 503 when the database or chain is down.
  *
- * On-chain writes never touch a key here: they return unsigned transactions on the
- * request's market chain (`chain`: "base", the default, or "arc") for the agent to
- * sign with its operator key (one EVM address on both chains) and send itself.
+ * On-chain writes never touch a key here: they return unsigned gno.land MsgCall
+ * messages for the agent to sign as ONE transaction with its operator key (a g1
+ * account, `gnoOperator`) and broadcast itself.
  */
 import {
   AgentEnvelopeError,
@@ -25,8 +25,7 @@ import {
 } from "@/lib/agents/api";
 import { apiKeyPrefix, generateApiKey, hashApiKey } from "@/lib/agents/api-keys";
 import { authenticateAgentRequest } from "@/lib/agents/authenticate";
-import { MARKET_CHAINS } from "@/lib/chains/registry";
-import { arcAgentsEnabled, arcMarket, arcMarkets, arcOperatorBalance, arcOperatorOf, arcOperatorPositions, assertArcStakeAllowed, prepareChainWrite } from "@/lib/agents/arc-chain";
+import { agentsEnabled, assertStakeAllowed, getMarket, gnoOperatorOf, listMarkets, operatorBalance, operatorPositions, prepareChainWrite } from "@/lib/agents/gno-chain";
 import { deployPriceWei, recordDeployPayment, verifyDeployPayment } from "@/lib/server/agent-payment";
 import { normalizeOwner } from "@/lib/owner";
 import { dryRun } from "@/lib/agents/dry-run";
@@ -57,7 +56,7 @@ import {
   revokeAllApiKeys,
   revokeApiKey,
   rotateOperator,
-  setArcOperator,
+  setGnoOperator,
   setAgentChat,
   setAgentStatus,
   stakedLastDayUnits,
@@ -214,7 +213,7 @@ async function handleRegister(env: AgentEnvelope): Promise<Handled> {
   const operatorWallet = normalizeWallet(env.body.operatorWallet);
   const payoutWallet = env.body.payoutWallet === undefined ? ownerWallet : normalizeWallet(env.body.payoutWallet);
   if (!ownerWallet || !operatorWallet || !payoutWallet) {
-    throw new AgentEnvelopeError("ownerWallet, operatorWallet and payoutWallet must be EVM addresses", 400, "bad_wallets");
+    throw new AgentEnvelopeError("ownerWallet, operatorWallet and payoutWallet must be gno.land (g1) addresses", 400, "bad_wallets");
   }
   const authorityLevel = env.body.authorityLevel ?? 0;
   if (!isAuthorityLevel(authorityLevel)) {
@@ -263,18 +262,17 @@ async function handleRegister(env: AgentEnvelope): Promise<Handled> {
     throw new AgentEnvelopeError("operator proof does not match", 401, "bad_operator_proof");
   }
 
-  // Where the agent's transactions come from (one EVM operator for Base and Arc), and the deploy fee ($1), which is
-  // paid on Arc in native USDC while Arc is configured (lib/server/agent-payment.ts).
-  const arcOperator = env.body.arcOperator === undefined ? null : arcOperatorOf(env.body.arcOperator);
-  if (env.body.arcOperator !== undefined && !arcOperator) {
-    throw new AgentEnvelopeError("arcOperator must be an EVM address", 400, "bad_wallets");
+  // Where the agent's transactions come from (a g1 account it holds the key to), and the deploy fee: an mUSD
+  // transfer from the owner (or that operator) to the realms' fee recipient (lib/server/agent-payment.ts).
+  const gnoOperator = env.body.gnoOperator === undefined ? null : gnoOperatorOf(env.body.gnoOperator);
+  if (env.body.gnoOperator !== undefined && !gnoOperator) {
+    throw new AgentEnvelopeError("gnoOperator must be a gno.land (g1) address", 400, "bad_wallets");
   }
-  let payment: { hash: `0x${string}`; wei: bigint } | null = null;
-  if (MARKET_CHAINS.chains.arc.enabled) {
-    const wei = deployPriceWei();
-    // The connected EVM wallet is the owner's account on Arc: it pays the fee itself.
-    const ownerArc = normalizeOwner(ownerWallet) ?? "";
-    payment = { hash: await onChain(() => verifyDeployPayment(env.body.paymentTx, wei, [ownerArc, arcOperator ?? ""])), wei };
+  let payment: { hash: string; wei: bigint } | null = null;
+  const wei = deployPriceWei();
+  if (agentsEnabled() && wei > 0n) {
+    const owner = normalizeOwner(ownerWallet) ?? "";
+    payment = { hash: await onChain(() => verifyDeployPayment(env.body.paymentTx, wei, [owner, gnoOperator ?? ""])), wei };
   }
 
   const replay = await replayOrConsumeNonce(env, env.nonce);
@@ -301,7 +299,7 @@ async function handleRegister(env: AgentEnvelope): Promise<Handled> {
     authorityLevel: authorityLevel as AuthorityLevel,
     capabilities,
     status: authorityLevel > SELF_SERVICE_MAX_AUTHORITY ? "pending" : "active",
-    arcOperator,
+    gnoOperator,
   });
 
   await recordRequest(env.agentId, "register", true, null).catch(() => undefined);
@@ -310,11 +308,11 @@ async function handleRegister(env: AgentEnvelope): Promise<Handled> {
 
 // ── everything else ─────────────────────────────────────────────────────────
 
-/** Live markets the agent opened from its Arc operator (the index). */
+/** Live markets the agent opened from its gno operator (the index). */
 async function activeMarketsOf(agent: AgentRecord): Promise<number> {
-  if (!agent.arcOperator || !arcAgentsEnabled()) return 0;
-  const operator = agent.arcOperator.toLowerCase();
-  const live = await arcMarkets({ states: LIVE_STATES, limit: 10_000 }).catch(() => []);
+  if (!agent.gnoOperator || !agentsEnabled()) return 0;
+  const operator = agent.gnoOperator.toLowerCase();
+  const live = await listMarkets({ states: LIVE_STATES, limit: 10_000 }).catch(() => []);
   return (live as Array<{ creator?: string }>).filter((m) => m.creator?.toLowerCase() === operator).length;
 }
 
@@ -362,22 +360,24 @@ async function handleAuthenticated(env: AgentEnvelope, authorization: string | n
         await recordRequest(agent.agentId, env.action, false, "daily_cap").catch(() => undefined);
         return {
           status: 403,
-          body: { ok: false, reason: "daily_cap", message: `over ${agent.limits.maxDailyUsdc} USDC at risk today` },
+          body: { ok: false, reason: "daily_cap", message: `over ${agent.limits.maxDailyUsdc} mUSD at risk today` },
         };
       }
     }
-    if (!arcAgentsEnabled()) {
+    if (!agentsEnabled()) {
       if (reservation !== null) await releaseStake(reservation, "chain_unavailable").catch(() => undefined);
       throw new AgentEnvelopeError("markets are not configured on this deployment", 503, "chain_unavailable");
     }
-    if (!agent.arcOperator) {
-      if (reservation !== null) await releaseStake(reservation, "no_arc_operator").catch(() => undefined);
-      throw new AgentEnvelopeError("set an operator first (setArcOperator): transactions are sent from it, on Base and Arc", 409, "no_arc_operator");
+    const operator = agent.gnoOperator;
+    if (!operator) {
+      if (reservation !== null) await releaseStake(reservation, "no_gno_operator").catch(() => undefined);
+      throw new AgentEnvelopeError("set an operator first (setGnoOperator): transactions are sent from it", 409, "no_gno_operator");
     }
-    let arc;
+    let prepared;
+    const w = write as unknown as { action: string; params: Record<string, unknown> };
     try {
-      await onChain(() => assertArcStakeAllowed(write as unknown as { action: string; params: Record<string, unknown> }, env.body, agent.arcOperator as `0x${string}`));
-      arc = await onChain(() => prepareChainWrite(write as unknown as { action: string; params: Record<string, unknown> }, env.body, agent.arcOperator as `0x${string}`));
+      await onChain(() => assertStakeAllowed(w, env.body, operator));
+      prepared = await onChain(() => prepareChainWrite(w, env.body, operator));
     } catch (err) {
       if (reservation !== null) await releaseStake(reservation, "prepare_failed").catch(() => undefined);
       throw err;
@@ -388,13 +388,9 @@ async function handleAuthenticated(env: AgentEnvelope, authorization: string | n
       body: {
         ok: true,
         action: env.action,
-        chain: arc.chain,
-        signer: agent.arcOperator,
-        transactions: arc.transactions,
-        submit:
-          arc.chain === "base"
-            ? "Sign each transaction with the operator key and send it to Base, in order, waiting for each to land (an approve comes first when the USDC allowance is short). Gas is ETH on Base."
-            : "Sign each transaction with the operator key (value is native USDC in wei) and send it to Arc, in order.",
+        ...prepared,
+        signer: operator,
+        submit: `Sign every message as ONE transaction with the operator key (gnokey or gno-js-client), chain id ${prepared.chainId}, and broadcast it to ${prepared.rpcUrl}. Gas is GNOT; an mUSD Approve comes first when the allowance is short.`,
       },
     };
   }
@@ -430,7 +426,7 @@ async function handleAuthenticated(env: AgentEnvelope, authorization: string | n
 
     case "rotateOperator": {
       const next = normalizeWallet(env.body.operatorWallet);
-      if (!next) throw new AgentEnvelopeError("operatorWallet must be an EVM address", 400, "bad_wallets");
+      if (!next) throw new AgentEnvelopeError("operatorWallet must be a gno.land (g1) address", 400, "bad_wallets");
       const proofOk = await verifyWalletSignature({
         address: next,
         message: operatorProofMessage(agent.agentId, next),
@@ -446,11 +442,11 @@ async function handleAuthenticated(env: AgentEnvelope, authorization: string | n
       return { status: 200, body: { ok: true, operatorWallet: next, keysRevoked: true } };
     }
 
-    case "setArcOperator": {
-      const next = arcOperatorOf(env.body.arcOperator);
-      if (!next) throw new AgentEnvelopeError("arcOperator must be an EVM address", 400, "bad_wallets");
-      await setArcOperator(agent.agentId, next);
-      return { status: 200, body: { ok: true, arcOperator: next } };
+    case "setGnoOperator": {
+      const next = gnoOperatorOf(env.body.gnoOperator);
+      if (!next) throw new AgentEnvelopeError("gnoOperator must be a gno.land (g1) address", 400, "bad_wallets");
+      await setGnoOperator(agent.agentId, next);
+      return { status: 200, body: { ok: true, gnoOperator: next } };
     }
 
     case "issueKey": {
@@ -522,28 +518,28 @@ async function handleAuthenticated(env: AgentEnvelope, authorization: string | n
         throw new AgentEnvelopeError(`state must be one of ${Object.keys(STATE_FILTERS).join(", ")}`, 400, "bad_params");
       }
       const limit = Math.min(Math.max(Number(env.body.limit ?? 50) || 50, 1), 200);
-      requireArc();
-      const markets = await onChain(() => arcMarkets({ states, category: str(env.body, "category", 32) || undefined, limit, kind: env.body.kind, chain: env.body.chain }));
-      return { status: 200, body: { ok: true, chain: env.body.chain ?? "all", source: "index", markets } };
+      requireChain();
+      const markets = await onChain(() => listMarkets({ states, category: str(env.body, "category", 32) || undefined, limit, kind: env.body.kind }));
+      return { status: 200, body: { ok: true, chain: "gno", source: "index", markets } };
     }
 
     case "getClaim": {
       const claimId = parseClaimId(env.body.claimId);
-      requireArc();
-      const market = await onChain(() => arcMarket(env.body.kind === "pool" ? "pool" : "vs", Number(claimId), env.body));
+      requireChain();
+      const market = await onChain(() => getMarket(env.body.kind === "pool" ? "pool" : "vs", Number(claimId)));
       if (!market) throw new AgentEnvelopeError(`market ${claimId} does not exist`, 404, "unknown_claim");
       return { status: 200, body: { ok: true, chain: market.chain, market } };
     }
 
     case "getBalances": {
-      const operator = requireArcOperator(agent);
-      return { status: 200, body: { ok: true, arcOperator: operator, ...(await onChain(() => arcOperatorBalance(operator, env.body))) } };
+      const operator = requireOperator(agent);
+      return { status: 200, body: { ok: true, gnoOperator: operator, ...(await onChain(() => operatorBalance(operator, env.body))) } };
     }
 
     case "listPositions": {
-      const operator = requireArcOperator(agent);
-      const positions = await onChain(() => arcOperatorPositions(operator, env.body));
-      return { status: 200, body: { ok: true, chain: env.body.chain ?? "all", source: "index", arcOperator: operator, positions } };
+      const operator = requireOperator(agent);
+      const positions = await onChain(() => operatorPositions(operator));
+      return { status: 200, body: { ok: true, chain: "gno", source: "index", gnoOperator: operator, positions } };
     }
 
     case "listEarnings": {
@@ -553,7 +549,7 @@ async function handleAuthenticated(env: AgentEnvelope, authorization: string | n
           ok: true,
           payoutWallet: agent.payoutWallet,
           // The contracts pay a referrer's share straight to it at payout: nothing accrues here to claim.
-          note: "Referrer and copy fees are paid by the contracts (on Base and Arc) directly to the wallet named in the stake.",
+          note: "Referrer and copy fees are paid by the realms directly to the account named in the stake.",
         },
       };
     }
@@ -563,14 +559,14 @@ async function handleAuthenticated(env: AgentEnvelope, authorization: string | n
   }
 }
 
-function requireArc(): void {
-  if (!arcAgentsEnabled()) throw new AgentEnvelopeError("markets are not configured on this deployment", 503, "chain_unavailable");
+function requireChain(): void {
+  if (!agentsEnabled()) throw new AgentEnvelopeError("markets are not configured on this deployment", 503, "chain_unavailable");
 }
 
-function requireArcOperator(agent: AgentRecord): `0x${string}` {
-  requireArc();
-  if (!agent.arcOperator) throw new AgentEnvelopeError("set an Arc operator first (setArcOperator)", 409, "no_arc_operator");
-  return agent.arcOperator as `0x${string}`;
+function requireOperator(agent: AgentRecord): string {
+  requireChain();
+  if (!agent.gnoOperator) throw new AgentEnvelopeError("set a gno operator first (setGnoOperator)", 409, "no_gno_operator");
+  return agent.gnoOperator;
 }
 
 function publicView(agent: AgentRecord) {
@@ -580,6 +576,7 @@ function publicView(agent: AgentRecord) {
     ownerWallet: agent.ownerWallet,
     operatorWallet: agent.operatorWallet,
     payoutWallet: agent.payoutWallet,
+    gnoOperator: agent.gnoOperator,
     authorityLevel: agent.authorityLevel,
     capabilities: agent.capabilities,
     status: agent.status,

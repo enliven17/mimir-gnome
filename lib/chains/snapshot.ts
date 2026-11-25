@@ -5,7 +5,7 @@
  * tested without a chain (tests/node/chain-snapshot.test.ts).
  */
 import { GNO, type GnoConfig } from "../gno/config";
-import { poolConfig, poolMarket, poolPosition, vsChallengers, vsClaim, vsConfig, type PoolMarket, type PoolPosition, type VsChallenger, type VsClaim } from "../gno/reads";
+import { poolConfig, poolMarket, poolMarkets, poolPosition, vsChallengers, vsClaim, vsClaims, vsConfig, type PoolMarket, type PoolPosition, type VsChallenger, type VsClaim } from "../gno/reads";
 import { indexToUsd } from "./amounts";
 import type { MarketChainId } from "./registry";
 import { settlementTiming as timing } from "./settlement-timing";
@@ -66,7 +66,7 @@ export function vsSnapshot(c: VsClaim, challengers: VsChallenger[], disputeWindo
       stakeA: creatorStake.toString(),
       stakeB: totalChallengerStake.toString(),
       volumeUsd: indexToUsd(creatorStake + totalChallengerStake),
-      participants: 1 + byUser.size,
+      participants: 1 + Math.max(byUser.size, c.challengerCount ?? 0),
       isPrivate: c.isPrivate,
       ...timing(BigInt(c.deadline), BigInt(c.proposal.proposedAt), BigInt(c.proposal.disputedAt), BigInt(disputeWindow)),
       updatedBlock: block,
@@ -137,4 +137,34 @@ export async function readPool(id: number, users: string[], opts: { block?: numb
   const [m, window] = await Promise.all([poolMarket(id, cfg), opts.disputeWindow ?? poolConfig(cfg).then((x) => x.disputeWindow)]);
   const stakes = await Promise.all(users.map(async (user) => ({ user, position: await poolPosition(id, user, cfg) })));
   return poolSnapshot(m, stakes, window, opts.block);
+}
+
+/** Every item of a paged JSON view (MarketsJSON / ClaimsJSON: newest first, at most 100 a page), up to `max`. */
+export async function readPaged<T>(page: (offset: number, limit: number) => Promise<T[] | null>, max = 2000): Promise<T[]> {
+  const out: T[] = [];
+  for (let offset = 0; offset < max; offset += 100) {
+    const rows = (await page(offset, 100)) ?? [];
+    out.push(...rows);
+    if (rows.length < 100) break;
+  }
+  return out.slice(0, max);
+}
+
+/** Every market of both realms as snapshots (no pool positions: the realm cannot list stakers). */
+export async function readAllMarkets(opts: { block?: number; cfg?: GnoConfig; max?: number } = {}) {
+  const cfg = opts.cfg ?? GNO;
+  const [claims, markets, vsCfg, poolCfg] = await Promise.all([
+    readPaged((o, l) => vsClaims(o, l, cfg), opts.max),
+    readPaged((o, l) => poolMarkets(o, l, cfg), opts.max),
+    vsConfig(cfg),
+    poolConfig(cfg),
+  ]);
+  return {
+    vs: claims.map((c) => vsSnapshot(c, [], vsCfg.disputeWindow, opts.block).market),
+    pool: markets.map((m) => poolSnapshot(m, [], poolCfg.disputeWindow, opts.block).market),
+    claims,
+    markets,
+    vsCfg,
+    poolCfg,
+  };
 }

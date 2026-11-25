@@ -1,60 +1,61 @@
 /**
- * Paying to deploy an agent on Arc: $1 (lib/arc/fees.ts). The owner pays by sending native USDC on Arc to the market contracts' fee
- * recipient; the registration names that transaction, and each one pays for
- * one agent only (an agent_payments row per tx hash).
+ * Paying to deploy an agent on gno.land: a flat mUSD price (lib/arc/fees.ts). The owner pays with a plain mUSD
+ * Transfer to the realms' fee recipient (r/pool ConfigJSON feeRecipient, so it follows the realm's timelocked
+ * changes); the registration names that transaction's hash, and each one pays for one agent only (an agent_payments
+ * row per hash). The payment is read from the committed transaction's events (lib/gno/payments.ts), never from what
+ * the caller claims.
  */
-import { parseAbi, parseEther, parseEventLogs, type Hex } from "viem";
-
 import { AgentEnvelopeError } from "@/lib/agents/api";
-import { arcPublicClient } from "@/lib/arc/chain";
-import { ARC, ARC_USDC as USDC } from "@/lib/arc/config";
-
-const ARC_USDC = USDC.toLowerCase();
-const TRANSFER_ABI = parseAbi(["event Transfer(address indexed from, address indexed to, uint256 value)"]);
 import { AGENT_DEPLOY_USD } from "@/lib/arc/fees";
+import { usdToIndex } from "@/lib/chains/amounts";
+import { GNO, type GnoConfig } from "@/lib/gno/config";
+import { toMusdUnits } from "@/lib/gno/msgs";
+import { musdTransferPaid } from "@/lib/gno/payments";
+import { poolConfig } from "@/lib/gno/reads";
+import { gnoTx, normalizeTxHash, type GnoTx } from "@/lib/gno/tx";
 import { insert, store } from "./store";
 
-export const deployPriceWei = (): bigint => parseEther(String(AGENT_DEPLOY_USD));
+/** The deploy price, index units (18 dp). */
+export const deployPriceWei = (): bigint => usdToIndex(AGENT_DEPLOY_USD);
 
-/** Where deploy payments go: MimirV3's fee recipient, read from the contract so it follows its timelocked changes. */
-export async function treasury(): Promise<`0x${string}`> {
-  const v3 = ARC.contracts.mimirV3;
-  if (!v3) throw new AgentEnvelopeError("Arc contracts are not configured", 503, "chain_unavailable");
-  return arcPublicClient().readContract({ address: v3, abi: parseAbi(["function feeRecipient() view returns (address)"]), functionName: "feeRecipient" });
+/** Where deploy payments go: the pool realm's fee recipient. */
+export async function treasury(cfg: GnoConfig = GNO): Promise<string> {
+  const to = (await poolConfig(cfg)).feeRecipient;
+  if (!to) throw new AgentEnvelopeError("the realms' fee recipient is not set", 503, "chain_unavailable");
+  return to.toLowerCase();
 }
 
+export interface DeployPaymentDeps {
+  tx(hash: string): Promise<GnoTx | null>;
+  treasury(): Promise<string>;
+  used(hash: string): Promise<boolean>;
+  musd: string;
+}
+
+const defaults = (cfg: GnoConfig = GNO): DeployPaymentDeps => ({
+  tx: (h) => gnoTx(h, cfg),
+  treasury: () => treasury(cfg),
+  used: async (h) => Boolean(await store().get("agent_payments", h)),
+  musd: cfg.realms.musd,
+});
+
 /**
- * Throws unless `txHash` paid at least `minWei` to the treasury from one of `payers` (the owner's wallet or the
- * agent's Arc operator) and has not paid for an agent before. The payment is a plain native USDC transfer from the
- * payer, or a USDC ERC-20 transfer (0x3600…, 6 dp: the same balance), whose Transfer log proves who paid whom.
+ * Throws unless `txHash` moved at least `minWei` of mUSD to the treasury from one of `payers` (the owner's wallet or
+ * the agent's gno operator) and has not paid for an agent before. Returns the normalized (lowercase hex) hash.
  */
-export async function verifyDeployPayment(txHash: unknown, minWei: bigint, payers: string[]): Promise<Hex> {
-  if (typeof txHash !== "string" || !/^0x[0-9a-fA-F]{64}$/.test(txHash)) {
-    throw new AgentEnvelopeError("paymentTx (the Arc transaction that paid the deploy fee) is required", 402, "payment_required");
-  }
-  const hash = txHash.toLowerCase() as Hex;
-  if (await store().get("agent_payments", hash)) throw new AgentEnvelopeError("that payment already paid for another agent", 409, "payment_used");
-  const allowed = new Set(payers.filter(Boolean).map((a) => a.toLowerCase()));
-  const client = arcPublicClient();
-  const [tx, receipt, to] = await Promise.all([
-    client.getTransaction({ hash }).catch(() => null),
-    client.getTransactionReceipt({ hash }).catch(() => null),
-    treasury(),
-  ]);
-  if (!tx || !receipt || receipt.status !== "success") throw new AgentEnvelopeError("the payment transaction was not found or failed", 402, "payment_invalid");
-  const treasuryLc = to.toLowerCase();
-  const viaToken = parseEventLogs({ abi: TRANSFER_ABI, logs: receipt.logs, eventName: "Transfer" }).some(
-    (l) => l.address.toLowerCase() === ARC_USDC && l.args.to.toLowerCase() === treasuryLc && allowed.has(l.args.from.toLowerCase()) && l.args.value * 1_000_000_000_000n >= minWei,
-  );
-  const native = tx.to?.toLowerCase() === treasuryLc && allowed.has(tx.from.toLowerCase()) && tx.value >= minWei;
-  if (!viaToken && !native) {
-    throw new AgentEnvelopeError(`the payment must send at least ${minWei} wei of USDC to ${to} from the owner's Arc account or the agent's Arc operator`, 402, "payment_invalid");
-  }
+export async function verifyDeployPayment(txHash: unknown, minWei: bigint, payers: string[], deps: DeployPaymentDeps = defaults()): Promise<string> {
+  const hash = normalizeTxHash(txHash);
+  if (!hash) throw new AgentEnvelopeError("paymentTx (the gno.land transaction that paid the deploy fee) is required", 402, "payment_required");
+  if (await deps.used(hash)) throw new AgentEnvelopeError("that payment already paid for another agent", 409, "payment_used");
+  const [tx, to] = await Promise.all([deps.tx(hash), deps.treasury()]);
+  if (!tx) throw new AgentEnvelopeError("the payment transaction was not found yet: try again in a few seconds", 402, "payment_invalid");
+  const paid = musdTransferPaid(tx, { musd: deps.musd, to, from: payers.filter(Boolean), min: toMusdUnits(minWei) });
+  if (!paid.ok) throw new AgentEnvelopeError(`${paid.error} Send at least ${Number(minWei / 10n ** 12n) / 1e6} mUSD to ${to} from the owner's account.`, 402, "payment_invalid");
   return hash;
 }
 
 /** Records the payment; throws when the same tx was recorded for another agent in the meantime (it pays once). */
-export async function recordDeployPayment(hash: Hex, agentId: string, ownerWallet: string, amountWei: bigint): Promise<void> {
+export async function recordDeployPayment(hash: string, agentId: string, ownerWallet: string, amountWei: bigint): Promise<void> {
   const now = Date.now();
   const fresh = await insert("agent_payments", hash, { tx_hash: hash, agent_id: agentId, owner_wallet: ownerWallet, amount_wei: amountWei.toString(), paid_at: now }, { i1: agentId, at: now });
   if (!fresh) throw new AgentEnvelopeError("that payment already paid for another agent", 409, "payment_used");

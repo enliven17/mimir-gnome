@@ -39,7 +39,7 @@ function toRecord(row: Record<string, unknown>): AgentRecord {
     agentId: String(row.agent_id),
     ownerWallet: String(row.owner_wallet),
     operatorWallet: String(row.operator_wallet),
-    arcOperator: typeof row.arc_operator === "string" && row.arc_operator ? (row.arc_operator as `0x${string}`) : null,
+    gnoOperator: typeof row.gno_operator === "string" && row.gno_operator ? row.gno_operator : null,
     payoutWallet: String(row.payout_wallet),
     displayName: String(row.display_name ?? ""),
     authorityLevel: Number(row.authority_level ?? 0) as AuthorityLevel,
@@ -94,7 +94,7 @@ export interface CreateAgentInput {
   authorityLevel: AuthorityLevel;
   capabilities: AgentCapability[];
   status?: AgentStatus;
-  arcOperator?: string | null;
+  gnoOperator?: string | null;
 }
 
 /** Throws when the agent id is taken. */
@@ -112,7 +112,7 @@ export async function createAgent(input: CreateAgentInput, now = Date.now()): Pr
     created_at: now,
     updated_at: now,
     last_seen_at: null,
-    arc_operator: input.arcOperator ?? null,
+    gno_operator: input.gnoOperator ?? null,
     chat_url: null,
     chat_price_units: 0,
     chat_secret: null,
@@ -366,14 +366,14 @@ export async function stakedLastDayUnits(agentId: string, now = Date.now()): Pro
   return budget ? sumUnits(budget.entries.filter((e) => e.at > now - DAY)) : 0n;
 }
 
-/** Set (or change) the EVM address an agent sends its Arc transactions from. */
-export async function setArcOperator(agentId: string, arcOperator: string, now = Date.now()): Promise<void> {
-  await patchAgent(agentId, { arc_operator: arcOperator, updated_at: now });
+/** Set (or change) the gno.land account an agent sends its market transactions from. */
+export async function setGnoOperator(agentId: string, gnoOperator: string, now = Date.now()): Promise<void> {
+  await patchAgent(agentId, { gno_operator: gnoOperator.toLowerCase(), updated_at: now });
 }
 
-/** The agent whose Arc operator is `address` (any case), or null. */
-export async function agentByArcOperator(address: string): Promise<AgentRecord | null> {
+/** The agent whose gno.land operator is `address` (any case), or null. */
+export async function agentByGnoOperator(address: string): Promise<AgentRecord | null> {
   const a = address.toLowerCase();
-  const row = (await allAgentRows()).find((r) => typeof r.arc_operator === "string" && r.arc_operator.toLowerCase() === a);
+  const row = (await allAgentRows()).find((r) => typeof r.gno_operator === "string" && r.gno_operator.toLowerCase() === a);
   return row ? toRecord(row) : null;
 }

@@ -1,53 +1,23 @@
 /**
- * The market index read straight from the contracts, for when Convex is off or failing (lib/server/arc-index.ts).
- * Same row shape as convex/arc.ts `markets` / `market`, built by the indexer's own readers (lib/chains/snapshot.ts).
- * ponytail: no positions, events or verdicts (they need a full log scan); participants stay 0. Fine for a few hundred
- * markets; a bigger count wants a real index again.
+ * The market index read straight from the realms, for when Convex is off or failing (lib/server/arc-index.ts).
+ * Same row shape as convex/arc.ts `markets` / `market`, built by the indexer's own mappers (lib/chains/snapshot.ts)
+ * from the realms' paged JSON views (MarketsJSON, ClaimsJSON).
+ * ponytail: no positions, events or verdicts (pool stakers are not enumerable on chain); fine for a few hundred
+ * markets.
  */
-import { createPublicClient } from "viem";
-
-import { chainTransport, viemChainOf } from "@/lib/chains/client";
-import { POOL_ABI, V3_ABI } from "@/lib/chains/indexer";
-import { MARKET_CHAINS, type MarketChain, type MarketChainId } from "@/lib/chains/registry";
-import { readPool, readVs, type Client } from "@/lib/chains/snapshot";
+import { MARKET_CHAINS, type MarketChainId } from "@/lib/chains/registry";
+import { readAllMarkets } from "@/lib/chains/snapshot";
 
 type Kind = "vs" | "pool";
-type Row = Awaited<ReturnType<typeof readPool>>["market"] | Awaited<ReturnType<typeof readVs>>["market"];
+type Row = Awaited<ReturnType<typeof readAllMarkets>>["vs"][number] | Awaited<ReturnType<typeof readAllMarkets>>["pool"][number];
 
 const TTL_MS = 30_000;
-const MULTICALL3 = "0xcA11bde05977b3631167028862bE2a173976CA11" as const;
 let cache: { at: number; rows: Row[] } | null = null;
-
-async function readChain(c: MarketChain): Promise<Row[]> {
-  // Multicall3 (same address on Base and Arc): a few RPC requests instead of six per market, which public RPCs throttle.
-  const chain = { ...viemChainOf(c), contracts: { multicall3: { address: MULTICALL3 } } };
-  const client = createPublicClient({ chain, transport: chainTransport(c), batch: { multicall: { batchSize: 4096 } } }) as unknown as Client;
-  const { mimirV3, mimirPool } = c.contracts;
-  const block = Number(await client.getBlockNumber());
-  const rows: Row[] = [];
-  if (mimirPool) {
-    const [count, window] = await Promise.all([
-      client.readContract({ address: mimirPool, abi: POOL_ABI, functionName: "marketCount" }),
-      client.readContract({ address: mimirPool, abi: POOL_ABI, functionName: "disputeWindow" }),
-    ]);
-    const ids = Array.from({ length: Number(count) }, (_, i) => BigInt(i + 1));
-    rows.push(...(await Promise.all(ids.map((id) => readPool(c, client, mimirPool, id, [], block, window)))).map((s) => s.market));
-  }
-  if (mimirV3) {
-    const [count, window] = await Promise.all([
-      client.readContract({ address: mimirV3, abi: V3_ABI, functionName: "claimCount" }),
-      client.readContract({ address: mimirV3, abi: V3_ABI, functionName: "disputeWindow" }),
-    ]);
-    const ids = Array.from({ length: Number(count) }, (_, i) => BigInt(i + 1));
-    rows.push(...(await Promise.all(ids.map((id) => readVs(c, client, mimirV3, id, block, window)))).map((s) => s.market));
-  }
-  return rows;
-}
 
 async function allRows(): Promise<Row[]> {
   if (cache && Date.now() - cache.at < TTL_MS) return cache.rows;
-  const chains = MARKET_CHAINS.enabled.map((id) => MARKET_CHAINS.chains[id]);
-  const rows = (await Promise.all(chains.map(readChain))).flat().sort((a, b) => b.createdAt - a.createdAt);
+  const { vs, pool } = await readAllMarkets({ cfg: MARKET_CHAINS.chains.gno.gno });
+  const rows = [...vs, ...pool].sort((a, b) => b.createdAt - a.createdAt);
   cache = { at: Date.now(), rows };
   return rows;
 }
@@ -59,7 +29,7 @@ export async function chainMarketList(kind?: Kind, chain?: MarketChainId, limit 
 }
 
 /** One market like convex/arc.ts `market`, without positions, events or a verdict. */
-export async function chainMarketDetail(kind: Kind, marketId: number, chain: MarketChainId) {
+export async function chainMarketDetail(kind: Kind, marketId: number, chain: MarketChainId = "gno") {
   const m = (await allRows()).find((r) => r.kind === kind && r.marketId === marketId && r.chain === chain);
-  return m ? { ...m, positions: [], events: [], verdict: null, feesCollected: "0", linked: [] } : null;
+  return m ? { ...m, positions: [], events: [], verdict: null, feesCollected: "0" } : null;
 }

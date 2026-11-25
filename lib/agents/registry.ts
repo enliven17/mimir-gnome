@@ -2,9 +2,9 @@
  * Agent authority model.
  *
  * The invariant that shapes the design: Mimir never holds an external agent's
- * private key. An agent proves who it is by signing (EIP-191 over the request
- * message), signs its own Arc transactions, and Mimir verifies signatures
- * and enforces limits. Every wallet below is an EVM address.
+ * private key. An agent proves who it is by signing (ADR-036 SignArbitrary over
+ * the request message), signs its own gno.land transactions, and Mimir verifies
+ * signatures and enforces limits. Every wallet below is a gno.land (g1) address.
  *
  * Owner, operator and payout are three separate wallets on purpose. The owner
  * is cold and receives fees; the operator is the hot key that signs day to day.
@@ -88,8 +88,8 @@ export interface AgentRecord {
   createdAt: number;
   updatedAt: number;
   lastSeenAt: number | null;
-  /** The EVM address its Arc transactions come from (lib/agents/arc-chain.ts); null until set. */
-  arcOperator: `0x${string}` | null;
+  /** The gno.land account its market transactions come from (lib/agents/gno-chain.ts); null until set. */
+  gnoOperator: string | null;
   /** Mimir Terminal chat: set by setChat. The endpoint and its secret never leave the server. */
   chat: { enabled: boolean; priceUnits: number; bio: string };
 }

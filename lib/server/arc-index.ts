@@ -22,7 +22,7 @@ function convex(): ConvexHttpClient | null {
   return client;
 }
 
-/** Every position an Arc account holds, each with its market. */
+/** Every position a gno.land account holds, each with its market. */
 export async function arcPositions(arcAccount: string) {
   const c = convex();
   if (OFF) return [];
@@ -30,7 +30,7 @@ export async function arcPositions(arcAccount: string) {
   return c.query(api.arc.positionsOf, { user: arcAccount });
 }
 
-/** VS markets the given Arc addresses challenged, in the given statuses, each with its positions. */
+/** VS markets the given gno.land addresses challenged, in the given statuses, each with its positions. */
 export async function arcChallengedBy(wallets: string[], statuses: string[], limit: number) {
   const c = convex();
   if (OFF) return [];
@@ -38,7 +38,7 @@ export async function arcChallengedBy(wallets: string[], statuses: string[], lim
   return c.query(api.arcViews.challengedBy, { wallets: wallets.map((w) => w.toLowerCase()), statuses, limit });
 }
 
-/** The council's Arc wallets (slug → address), from the Convex view. */
+/** The council's gno.land accounts (slug → address), from the Convex view. */
 export async function arcCouncilWallets(): Promise<Map<string, string>> {
   const c = convex();
   if (!c) return new Map();
@@ -60,8 +60,8 @@ export async function arcMarketList(kind?: "vs" | "pool", chain?: MarketChainId)
   return c.query(api.arc.markets, { kind, chain, limit: 500 }).catch(() => chainMarketList(kind, chain));
 }
 
-/** One market with its positions, events, verdict and linked markets; chain defaults to Arc (older links). */
-export async function arcMarketDetail(kind: "vs" | "pool", marketId: number, chain: MarketChainId = "arc") {
+/** One market with its positions, events and verdict. */
+export async function arcMarketDetail(kind: "vs" | "pool", marketId: number, chain: MarketChainId = "gno") {
   const c = convex();
   if (!c) return chainMarketDetail(kind, marketId, chain);
   return c.query(api.arc.market, { chain, kind, marketId }).catch(() => chainMarketDetail(kind, marketId, chain));

@@ -15,9 +15,8 @@ export const MAX_QUESTION_BYTES = 200;
 export const MAX_POSITION_BYTES = 100;
 export const MAX_URL_BYTES = 200;
 export const MAX_CHALLENGERS = 16;
-/** The contracts' own stake minimum on Arc (a deploy parameter), in USDC; 2 when not configured. */
-const primary = MARKET_CHAINS.chains[MARKET_CHAINS.defaultChain];
-export const MIN_STAKE_USDC = primary.contracts.mimirV3 ? Number(primary.contracts.minStakeWei) / 1e18 : 2;
+/** The realms' stake minimum (gno/r/pool, gno/r/vs), in mUSD. */
+export const MIN_STAKE_USDC = Number(MARKET_CHAINS.chains.gno.minStakeWei) / 1e18;
 /** A claim must run at least this long, so it cannot be settled before anyone sees it. */
 export const MIN_CLAIM_DURATION_SEC = 15 * 60;
 export const MAX_CLAIM_DURATION_SEC = 90 * 86_400;
@@ -44,15 +43,13 @@ export interface ClaimParams {
   claimId: bigint;
 }
 
-export interface AmountParams {
-  amountUnits: bigint;
-}
 
 export type WriteParams =
   | { action: "createClaim"; params: CreateClaimParams }
   | { action: "challenge"; params: ClaimStakeParams }
   | { action: "dispute"; params: ClaimParams }
-  | { action: "withdraw"; params: AmountParams };
+  /** Collect a pool payout (r/pool Claim). */
+  | { action: "withdraw"; params: ClaimParams };
 
 function bad(message: string): never {
   throw new AgentEnvelopeError(message, 400, "bad_params");
@@ -149,7 +146,7 @@ export function parseWriteParams(
     case "dispute":
       return { action, params: { claimId: parseClaimId(body.claimId) } };
     case "withdraw":
-      return { action, params: { amountUnits: usdcToUnits(body.amountUsdc, "amountUsdc") } };
+      return { action, params: { claimId: parseClaimId(body.claimId) } };
   }
 }
 
