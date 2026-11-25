@@ -1,17 +1,16 @@
 "use node";
 
-// The house market creator on every enabled market chain, as a Convex cron step. Each tick:
-//   1. cancel its own VS claims that closed with no challenger (their stake comes back), on each chain
+// The house market creator on gno.land, as a Convex cron step. Each tick:
+//   1. cancel its own VS claims that closed with no challenger (their stake comes back)
 //   2. count its joinable markets; at MAX_ACTIVE_CLAIMS, stop
 //   3. draft from the same rule-built sources (crypto, $ANSEM, sports, stocks, Polymarket when enabled), gate them on
-//      chain limits and the decidability score, drop duplicates of its live markets, optionally council-preflight them
-//   4. open each as a two-sided pool (anyone stakes either side) on EVERY enabled chain where the creator has a
-//      Circle developer-controlled wallet (the key stays with Circle); its stake backs side A.
-//      A pool nobody joined is refunded by the oracle. Leftover VS claims from before the switch are cancelled by step 1.
-// Budget: CREATOR_DAILY_BUDGET_USDC (convex/houseBudget.ts).
-// CREATOR_DAILY_MARKETS counts the house's own drafts per chain.
-// Env: ARC_CREATOR_WALLET / BASE_CREATOR_WALLET ({"id","address"}; the Base one needs ETH for gas and USDC), CIRCLE_API_KEY,
-//      CIRCLE_ENTITY_SECRET, the CREATOR_* knobs of the old worker, MIMIR_PAUSE_CREATE_MARKET=1, MARKET_CREATOR_DRY_RUN=1.
+//      realm limits and the decidability score, drop duplicates of its live markets, optionally council-preflight them
+//   4. open each as a two-sided pool (anyone stakes either side) from the house creator's account (signed with
+//      GNO_CREATOR_MNEMONIC; an exact mUSD Approve rides in the same transaction); its stake backs side A.
+//      A pool nobody joined is refunded by the oracle.
+// Budget: CREATOR_DAILY_BUDGET_USDC (mUSD, convex/houseBudget.ts). CREATOR_DAILY_MARKETS counts the house's own drafts.
+// Env: GNO_CREATOR_MNEMONIC (and GNO_CREATOR_ADDRESS; the account needs mUSD and GNOT for gas), the CREATOR_* knobs of
+//      the old worker, MIMIR_PAUSE_CREATE_MARKET=1, MARKET_CREATOR_DRY_RUN=1.
 
 import { internal } from "./_generated/api";
 import { internalAction } from "./_generated/server";
@@ -24,9 +23,10 @@ import { draftStockClaims } from "../agents/market-creator/stocks";
 import { fetchPolymarketCandidates, isPolymarketEnabled, polymarketDraft } from "../agents/market-creator/polymarket";
 import { filterDuplicates, signatureOf } from "../agents/market-creator/dedupe";
 import { usdToIndex } from "../lib/chains/amounts";
-import { houseCreatorWallet, type CircleWallet } from "../lib/chains/house";
-import { serverMarketChains, type MarketChain, type MarketChainId } from "../lib/chains/registry";
-import { circleCancelVs, circleCreatePool, createdMarketId, walletGasWei, walletUsdcWei } from "../lib/server/chain-circle";
+import { creatorMnemonic, houseCreatorWallet } from "../lib/chains/house";
+import { serverMarketChains } from "../lib/chains/registry";
+import { gnoSigner } from "../lib/gno/signer";
+import { gnoCancelVs, gnoCreatePool, MIN_GAS_UGNOT, walletGasUgnot, walletMusdWei } from "../lib/server/gno-wallets";
 
 const envNum = (name: string, fallback: number) => {
   const n = Number(process.env[name]);
@@ -89,42 +89,38 @@ export const tick = internalAction({
     if (process.env.MIMIR_BACKEND_OFF === "1") return; // this deployment is switched off (crons.ts)
     await ctx.runMutation(internal.arcAdmin.beat, { name: "arc-creator" });
     const e = process.env;
-    const registry = serverMarketChains(e);
-    // Each enabled chain where the house has a wallet, Base first (the registry's order).
-    const sides: Array<{ cfg: MarketChain; wallet: CircleWallet; own: Array<Doc<"arcMarkets"> & { chain: MarketChainId }> }> = [];
-    for (const id of registry.enabled) {
-      const wallet = houseCreatorWallet(id, e);
-      if (!wallet) continue;
-      sides.push({ cfg: registry.chains[id], wallet, own: await ctx.runQuery(internal.arc.marketsBy, { creator: wallet.address, chain: id }) });
+    const cfg = serverMarketChains(e).chains.gno;
+    const wallet = houseCreatorWallet(e);
+    const key = creatorMnemonic(e);
+    if (!cfg.enabled || !wallet || !key) return;
+    const signer = await gnoSigner(key, cfg.gno);
+    if (signer.address !== wallet.address) {
+      console.warn(`[creator] GNO_CREATOR_MNEMONIC signs as ${signer.address}, not GNO_CREATOR_ADDRESS ${wallet.address}; skipped`);
+      return;
     }
-    if (!sides.length) return;
+    const own: Array<Doc<"arcMarkets"> & { chain: "gno" }> = await ctx.runQuery(internal.arc.marketsBy, { creator: wallet.address, chain: "gno" });
     const dryRun = e.MARKET_CREATOR_DRY_RUN === "1";
     const now = Math.floor(Date.now() / 1000);
 
     // 1. Its own VS claims that closed with nobody on the other side: cancel, the stake comes back.
-    for (const { cfg, wallet, own } of sides) {
-      for (const m of own.filter((m) => m.kind === "vs" && m.status === "open" && m.deadline <= now)) {
-        if (dryRun) continue;
-        try {
-          const tx = await circleCancelVs(cfg, wallet.id, m.marketId);
-          console.log(`[creator] ${cfg.id}: cancelled empty VS #${m.marketId} ${tx}`);
-        } catch (err) {
-          console.warn(`[creator] ${cfg.id}: cancel VS #${m.marketId}:`, err instanceof Error ? err.message : err);
-        }
+    for (const m of own.filter((m) => m.kind === "vs" && m.status === "open" && m.deadline <= now)) {
+      if (dryRun) continue;
+      try {
+        await gnoCancelVs(signer, m.marketId, cfg.gno);
+      } catch (err) {
+        console.warn(`[creator] cancel VS #${m.marketId}:`, err instanceof Error ? err.message : err);
       }
     }
 
     if (e.MIMIR_PAUSE_CREATE_MARKET === "1") return;
-    const liveOf = (own: (typeof sides)[number]["own"]) => own.filter((m) => (m.status === "open" || m.status === "active") && m.deadline > now);
-    // Inventory is counted on the fullest chain (the copies of one draft are one market to the house).
-    const live = sides.flatMap((s) => liveOf(s.own));
-    const headroom = envNum("MAX_ACTIVE_CLAIMS", 30) - Math.max(...sides.map((s) => liveOf(s.own).length));
+    const live = own.filter((m) => (m.status === "open" || m.status === "active") && m.deadline > now);
+    const headroom = envNum("MAX_ACTIVE_CLAIMS", 30) - live.length;
     if (headroom <= 0) {
       console.log(`[creator] inventory at cap (${live.length})`);
       return;
     }
 
-    const signatures = live.map((m) => signatureOf({ category: m.category, question: m.question, resolutionUrl: m.resolutionUrl }, `${m.chain} ${m.kind} #${m.marketId}`));
+    const signatures = live.map((m) => signatureOf({ category: m.category, question: m.question, resolutionUrl: m.resolutionUrl }, `${m.kind} #${m.marketId}`));
     const unique = filterDuplicates(gateDrafts(await gatherDrafts()), signatures, (d, why) => console.warn(`[draft] drop (duplicate, ${why}): ${d.label}`));
     const drafts = (await vetDrafts(unique)).slice(0, headroom);
     if (!drafts.length) {
@@ -136,62 +132,46 @@ export const tick = internalAction({
     // The daily house budget (convex/houseBudget.ts): each open reserves its seed there first.
     const dayStart = Math.floor(Date.UTC(new Date().getUTCFullYear(), new Date().getUTCMonth(), new Date().getUTCDate()) / 1000);
     const seed = usdToIndex(stakeUsdc);
-    // How many markets each chain can still open today (daily count, USDC and gas in the wallet); the budget is checked
-    // per open below.
-    const room = new Map<MarketChainId, number>();
-    for (const { cfg, wallet, own } of sides) {
-      // At most CREATOR_DAILY_MARKETS of its own drafts a day (UTC).
-      const draftsToday = own.filter((m) => m.createdAt >= dayStart).length;
-      const dailyLeft = Math.max(0, envNum("CREATOR_DAILY_MARKETS", 2) - draftsToday);
-      let n = Math.min(dailyLeft, drafts.length);
-      if (n > 0) {
-        const [usdc, gas] = await Promise.all([walletUsdcWei(cfg, wallet.address), walletGasWei(cfg, wallet.address)]);
-        if (usdc < seed * BigInt(n)) {
-          console.warn(`[creator] ${cfg.id}: not enough USDC on ${wallet.address} for ${n} markets; top it up`);
-          n = Number(usdc / seed);
-        }
-        if (cfg.gas.symbol === "ETH" && gas === 0n) {
-          console.warn(`[creator] ${cfg.id}: no ETH for gas on ${wallet.address}; top it up`);
-          n = 0;
-        }
+    // How many markets it can still open today (daily count, mUSD and GNOT in the account); the budget is checked per open.
+    const draftsToday = own.filter((m) => m.createdAt >= dayStart).length;
+    let room = Math.min(Math.max(0, envNum("CREATOR_DAILY_MARKETS", 2) - draftsToday), drafts.length);
+    if (room > 0) {
+      const [musd, gas] = await Promise.all([walletMusdWei(wallet.address, cfg.gno), walletGasUgnot(wallet.address, cfg.gno)]);
+      if (musd < seed * BigInt(room)) {
+        console.warn(`[creator] not enough mUSD on ${wallet.address} for ${room} markets; top it up`);
+        room = Number(musd / seed);
       }
-      room.set(cfg.id, n);
+      if (gas < MIN_GAS_UGNOT) {
+        console.warn(`[creator] no GNOT for gas on ${wallet.address}; top it up`);
+        room = 0;
+      }
     }
-    if (![...room.values()].some((n) => n > 0)) {
-      console.log(`[creator] daily count used, or no funds, on every chain`);
+    if (room <= 0) {
+      console.log("[creator] daily count used, or no funds");
       return;
     }
 
-    const opened = new Set<MarketChainId>();
-    let budgetLeft = true;
-    for (const d of drafts) {
-      if (!budgetLeft) break;
-      const targets = sides.filter((s) => (room.get(s.cfg.id) ?? 0) > 0);
-      if (!targets.length) break;
+    let opened = false;
+    for (const d of drafts.slice(0, room)) {
       if (dryRun) {
-        console.log(`[creator] (dry run) would open on ${targets.map((t) => t.cfg.id).join("+")} [${d.category}] "${d.question}" closing ${new Date(d.deadline * 1000).toISOString()}`);
+        console.log(`[creator] (dry run) would open [${d.category}] "${d.question}" closing ${new Date(d.deadline * 1000).toISOString()}`);
         continue;
       }
-      for (const { cfg, wallet } of targets) {
-        const hold = await ctx.runMutation(internal.houseBudget.reserve, { chain: cfg.id, wei: seed.toString(), ref: `creator:${d.question.slice(0, 60)}` });
-        if (hold === null) {
-          console.log(`[creator] daily house budget used`);
-          budgetLeft = false;
-          break;
-        }
-        try {
-          const tx = await circleCreatePool(cfg, { walletId: wallet.id, address: wallet.address }, {
-            question: d.question, labelA: d.creatorPosition, labelB: d.counterPosition, resolutionUrl: d.resolutionUrl, category: d.category, deadline: d.deadline, side: SIDE_A,
-          }, seed);
-          room.set(cfg.id, (room.get(cfg.id) ?? 1) - 1);
-          opened.add(cfg.id);
-          console.log(`[creator] ${cfg.id}: opened [${d.category}] ${d.label} ${tx}`);
-        } catch (err) {
-          await ctx.runMutation(internal.houseBudget.release, { id: hold });
-          console.error(`[creator] ${cfg.id}: failed (${d.label}):`, err instanceof Error ? err.message : err);
-        }
+      const hold = await ctx.runMutation(internal.houseBudget.reserve, { chain: "gno", wei: seed.toString(), ref: `creator:${d.question.slice(0, 60)}` });
+      if (hold === null) {
+        console.log("[creator] daily house budget used");
+        break;
+      }
+      try {
+        await gnoCreatePool(signer, {
+          question: d.question, labelA: d.creatorPosition, labelB: d.counterPosition, resolutionUrl: d.resolutionUrl, category: d.category, deadline: d.deadline, side: SIDE_A,
+        }, seed, cfg.gno);
+        opened = true;
+      } catch (err) {
+        await ctx.runMutation(internal.houseBudget.release, { id: hold });
+        console.error(`[creator] failed (${d.label}):`, err instanceof Error ? err.message : err);
       }
     }
-    for (const c of opened) await ctx.scheduler.runAfter(0, internal.arcSync.sync, { chain: c });
+    if (opened) await ctx.scheduler.runAfter(0, internal.arcSync.sync, {});
   },
 });

@@ -1,15 +1,14 @@
 "use node";
 
-// The council on every enabled market chain (Base, Arc), as a Convex cron step. Each tick takes the
-// open markets from the index, and for each (market, persona) pair still undecided runs the same persona pipeline
-// (agents/council/shared/persona-runner.ts: category filter, rule personas, the LLM persona over one cached evidence
-// fetch, Kelly sizing at the pool's odds). A persona that disagrees with the creator stakes side B from its own
-// Circle developer-controlled wallet (lib/server/circle-w3s.ts); the key stays with Circle. Every decision is recorded
-// (arcCouncilDb) and shown on the market page; a considered no stands for COUNCIL_REEVAL_MS.
-// A persona stakes from its wallet on the market's own chain: ARC_COUNCIL_WALLETS on Arc (gas in USDC),
-// BASE_COUNCIL_WALLETS on Base (approve + stake; gas in ETH that Mimir funds). No wallet on a chain = no stakes there.
-// Env: CIRCLE_API_KEY, CIRCLE_ENTITY_SECRET, ARC_COUNCIL_WALLETS / BASE_COUNCIL_WALLETS (scripts/arc/council-wallets.ts),
-//      the LLM keys, MIMIR_PAUSE_COUNCIL=1 to stop, COUNCIL_DRY_RUN=1 to decide without staking.
+// The council on gno.land, as a Convex cron step. Each tick takes the open markets from the index, and for each
+// (market, persona) pair still undecided runs the same persona pipeline (agents/council/shared/persona-runner.ts:
+// category filter, rule personas, the LLM persona over one cached evidence fetch, Kelly sizing at the pool's odds).
+// A persona that disagrees with the creator stakes side B from its own gno.land account (its mnemonic in
+// GNO_COUNCIL_MNEMONICS, lib/chains/house.ts): an exact mUSD Approve rides in the same transaction when needed, gas is
+// GNOT. A persona without a key or without GNOT does not stake. Every decision is recorded (arcCouncilDb) and shown on
+// the market page; a considered no stands for COUNCIL_REEVAL_MS.
+// Env: GNO_COUNCIL_MNEMONICS (scripts/gno-wallets.ts), GNO_COUNCIL_WALLETS (the public addresses, optional), the LLM
+//      keys, MIMIR_PAUSE_COUNCIL=1 to stop, COUNCIL_DRY_RUN=1 to decide without staking.
 
 import { internal } from "./_generated/api";
 import { internalAction } from "./_generated/server";
@@ -23,14 +22,14 @@ import type { ActionCtx } from "./_generated/server";
 import { sizeStakeUnits } from "../agents/council/shared/persona-rules";
 import type { CouncilClaim, EvidenceCacheEntry } from "../agents/council/shared/types";
 import { floorToChain } from "../lib/chains/amounts";
-import { houseAddresses, houseCreatorWallet } from "../lib/chains/house";
+import { councilMnemonics, councilWallets, houseAddresses, houseCreatorWallet } from "../lib/chains/house";
 import { serverMarketChains, type MarketChainId } from "../lib/chains/registry";
-import { circleStake, walletGasWei, walletUsdcWei } from "../lib/server/chain-circle";
+import { gnoSigner } from "../lib/gno/signer";
+import { gnoStake, MIN_GAS_UGNOT, walletGasUgnot, walletMusdWei } from "../lib/server/gno-wallets";
 import { jevEnabled } from "../lib/jev";
 import { skipTake } from "../lib/jev-triage";
 import { ENTRY_FEE_BPS } from "../lib/arc/fees";
 import { LOCK_SECONDS, maxGrossFor, vsRoom } from "../lib/arc/markets";
-import { councilWalletsFromEnv } from "../lib/server/circle-w3s";
 import { copyArcStake } from "../lib/launch/arc-copy";
 import { councilCopyKey } from "../lib/launch/copy-key";
 import { createConsoleLogger } from "../lib/launch/log";
@@ -72,8 +71,8 @@ function asCouncilClaim(m: Market, positions: Position[]): CouncilClaim {
   } as unknown as CouncilClaim;
 }
 
-/** The house creator's address on a chain: rule personas trade only its markets (persona-rules.ts). */
-const houseCreator = (chain: MarketChainId): string | null => houseCreatorWallet(chain)?.address ?? null;
+/** The house creator's address: rule personas trade only its markets (persona-rules.ts). */
+const houseCreator = (): string | null => houseCreatorWallet()?.address ?? null;
 
 /** 6-dp units as the decimal USDC string for logs. */
 const usdcString = (u: bigint) => (Number(u) / 1e6).toFixed(6).replace(/\.?0+$/, "");
@@ -90,7 +89,12 @@ export const tick = internalAction({
     const e = process.env;
     const registry = serverMarketChains(e);
     if (!registry.enabled.length) return;
-    const walletsOf = Object.fromEntries(registry.enabled.map((c) => [c, councilWalletsFromEnv(c)])) as Record<MarketChainId, ReturnType<typeof councilWalletsFromEnv>>;
+    // A persona stakes when it has a key; its address is the one GNO_COUNCIL_WALLETS lists (or derived from the key).
+    const keys = councilMnemonics(e);
+    const addresses = councilWallets(e);
+    const wallets: Record<string, { address: string; mnemonic: string }> = Object.fromEntries(
+      Object.entries(keys).filter(([slug]) => addresses[slug]).map(([slug, mnemonic]) => [slug, { address: addresses[slug].address, mnemonic }]),
+    );
     const dryRun = e.COUNCIL_DRY_RUN === "1";
     const now = Math.floor(Date.now() / 1000);
 
@@ -100,13 +104,13 @@ export const tick = internalAction({
     const standing = new Set(await ctx.runQuery(internal.arcCouncilDb.standing, { now: Date.now() }));
     const evidenceCache = new Map<string, EvidenceCacheEntry>();
     const throttle = createThrottle(Number(e.COUNCIL_LLM_THROTTLE_MS ?? 4500));
-    // Per chain and wallet: USDC (index units) and, on Base, whether it has ETH for gas.
+    // Per account: mUSD (index units) and whether it has GNOT for gas.
     const balances = new Map<string, bigint>();
     const hasGas = new Map<string, boolean>();
 
     // Comment mode: one take per market from the best-suited persona, no stake (COUNCIL_COMMENTS, on by default).
     if (e.COUNCIL_COMMENTS !== "0") await writeTakes(ctx, markets, evidenceCache, throttle);
-    // Betting can be switched off on its own (mainnet: COUNCIL_BETS=0 saves the USDC and most of the LLM spend).
+    // Betting can be switched off on its own (COUNCIL_BETS=0 saves the mUSD and most of the LLM spend).
     if (e.COUNCIL_BETS === "0") return;
 
     let decisions = 0;
@@ -115,7 +119,6 @@ export const tick = internalAction({
     // Closest deadline first: those are the markets about to stop taking positions.
     for (const m of markets.sort((a, b) => a.deadline - b.deadline)) {
       const cfg = registry.chains[m.chain];
-      const wallets = walletsOf[m.chain];
       const full = await ctx.runQuery(internal.arc.marketWithPositions, { chain: m.chain, kind: m.kind, marketId: m.marketId });
       if (!full) continue;
       const claim = asCouncilClaim(m, full.positions);
@@ -133,7 +136,7 @@ export const tick = internalAction({
         const record = (d: { outcome: "staked" | "abstained" | "retry" | "failed"; rationale: string; confidence?: number; amount?: string; txHash?: string; until: number }) =>
           ctx.runMutation(internal.arcCouncilDb.record, { slug: persona.slug, chain: m.chain, kind: m.kind, marketId: m.marketId, ...(lean !== undefined ? { lean } : {}), ...d });
         try {
-          const decision = await evaluatePersonaForClaim(persona, claim, { evidenceCache, throttle, recordForecasts: false, houseCreator: houseCreator(m.chain), mainnet: cfg.network === "mainnet" });
+          const decision = await evaluatePersonaForClaim(persona, claim, { evidenceCache, throttle, recordForecasts: false, houseCreator: houseCreator(), mainnet: cfg.network === "mainnet" });
           lean = decision.verdict ? LEAN[decision.verdict] : undefined;
           if (!decision.shouldStake) {
             const transient = decision.skipReason === "llm-failed" || decision.skipReason === "no-evidence";
@@ -141,23 +144,23 @@ export const tick = internalAction({
             await record({ outcome: considered ? "abstained" : "retry", rationale: decision.rationale, confidence: decision.confidence, until: Date.now() + (considered ? REEVAL_MS : RETRY_MS) });
             continue;
           }
-          const bal = `${m.chain}:${me}`;
-          if (!balances.has(bal)) balances.set(bal, await walletUsdcWei(cfg, wallet.address));
-          if (cfg.gas.symbol === "ETH" && !hasGas.has(bal)) hasGas.set(bal, (await walletGasWei(cfg, wallet.address)) > 0n);
+          const bal = me;
+          if (!balances.has(bal)) balances.set(bal, await walletMusdWei(wallet.address, cfg.gno));
+          if (!hasGas.has(bal)) hasGas.set(bal, (await walletGasUgnot(wallet.address, cfg.gno)) >= MIN_GAS_UGNOT);
           if (hasGas.get(bal) === false) {
-            await record({ outcome: "abstained", rationale: `${persona.displayName} has no ETH for gas on ${cfg.label}.`, confidence: decision.confidence, until: Date.now() + REEVAL_MS });
+            await record({ outcome: "abstained", rationale: `${persona.displayName} has no GNOT for gas.`, confidence: decision.confidence, until: Date.now() + REEVAL_MS });
             continue;
           }
           const bankroll = units(balances.get(bal)!);
           let stake = sizeStakeUnits({ baseUsdc: persona.stakeUsdc, confidence: decision.confidence, bankrollUnits: bankroll, creatorStakeUnits: claim.creatorStake, totalChallengerStakeUnits: claim.totalChallengerStake });
           if (stake === null || stake === 0n) {
-            await record({ outcome: "abstained", rationale: stake === null ? `${persona.displayName} is out of USDC on ${cfg.label}.` : `${persona.displayName} sits out: no +EV stake at these pool odds.`, confidence: decision.confidence, until: Date.now() + REEVAL_MS });
+            await record({ outcome: "abstained", rationale: stake === null ? `${persona.displayName} is out of mUSD.` : `${persona.displayName} sits out: no +EV stake at these pool odds.`, confidence: decision.confidence, until: Date.now() + REEVAL_MS });
             continue;
           }
           if (m.kind === "vs") {
             // The 5x cap counts net stakes; personas pay the standard entry fee.
             const room = units(maxGrossFor(vsRoom(BigInt(m.stakeA), BigInt(m.stakeB)), ENTRY_FEE_BPS));
-            if (room < units(cfg.contracts.minStakeWei)) {
+            if (room < units(cfg.minStakeWei)) {
               await record({ outcome: "abstained", rationale: `${persona.displayName} would challenge, but the market is full.`, confidence: decision.confidence, until: Date.now() + REEVAL_MS });
               continue;
             }
@@ -165,15 +168,15 @@ export const tick = internalAction({
           }
           const amount = usdcString(stake);
           if (dryRun) {
-            await record({ outcome: "abstained", rationale: `[dry run] would stake ${amount} USDC. ${decision.rationale}`, confidence: decision.confidence, until: Date.now() + RETRY_MS });
+            await record({ outcome: "abstained", rationale: `[dry run] would stake ${amount} mUSD. ${decision.rationale}`, confidence: decision.confidence, until: Date.now() + RETRY_MS });
             continue;
           }
           const wei = floorToChain(cfg, unitsToWei(stake));
-          const txHash = await circleStake(cfg, { walletId: wallet.id, address: wallet.address }, { kind: m.kind, marketId: m.marketId, side: 2, wei });
+          const signer = await gnoSigner(wallet.mnemonic, cfg.gno);
+          const { txHash } = await gnoStake(signer, { kind: m.kind, marketId: m.marketId, side: 2, wei }, cfg.gno);
           balances.set(bal, balances.get(bal)! - wei);
           inMarket.add(me);
           staked.add(m.chain);
-          console.log(`[council] ${persona.slug} staked ${amount} USDC on ${m.chain} ${m.kind} #${m.marketId} ${txHash}`);
           // A stake stands for good: a persona is in once per market.
           await record({ outcome: "staked", rationale: decision.rationale, confidence: decision.confidence, amount: wei.toString(), txHash, until: Number.MAX_SAFE_INTEGER });
           // Mimir Launch: one copy job per follower of this persona (pools only); scheduling only, never throws.
@@ -186,7 +189,7 @@ export const tick = internalAction({
       }
       if (decisions >= MAX_DECISIONS_PER_TICK) break;
     }
-    for (const c of staked) await ctx.scheduler.runAfter(0, internal.arcSync.sync, { chain: c });
+    if (staked.size) await ctx.scheduler.runAfter(0, internal.arcSync.sync, {});
   },
 });
 
