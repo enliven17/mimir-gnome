@@ -11,20 +11,20 @@ import { indexToUsd, usdToIndex } from "../lib/chains/amounts";
 import { serverMarketChains } from "../lib/chains/registry";
 import { runArcCopy } from "../lib/launch/copy-stake";
 import { createConsoleLogger } from "../lib/launch/log";
-import { circleStake, walletGasWei, walletUsdcWei } from "../lib/server/chain-circle";
+import { copyWalletScope, gnoStake, MIN_GAS_UGNOT, sealedSigner, walletGasUgnot, walletMusdWei } from "../lib/server/gno-wallets";
 import { vChain } from "./schema";
 
 const log = createConsoleLogger({ level: process.env.LOG_LEVEL, base: { svc: "launch-copy" } });
 const gated = () => process.env.MIMIR_BACKEND_OFF === "1";
 
-/** One follower's copy of a leader's pool stake, on the leader's chain, from the follower's copy wallet there. */
+/** One follower's copy of a leader's pool stake, from the follower's copy wallet. */
 export const arcOne = internalAction({
   args: { key: v.string(), sub: v.id("launchCopies"), chain: v.optional(vChain), marketId: v.number(), side: v.number() },
   handler: async (ctx, a): Promise<string> => {
     await ctx.runQuery(internal.marketDeployment.check, {});
     if (gated()) return "gated";
-    const chain = a.chain ?? "arc";
-    const cfg = serverMarketChains().chains[chain];
+    const chain = "gno" as const;
+    const cfg = serverMarketChains().chains.gno;
     if (!cfg.enabled) return "chain off";
     try {
       return await runArcCopy(
@@ -34,20 +34,20 @@ export const arcOne = internalAction({
             finish: async (key, status, note) => void (await ctx.runMutation(internal.launchCopy.finish, { key, status, ...(note ? { note } : {}) })),
             arcSub: (id) => ctx.runQuery(internal.launchCopy.arcSub, { sub: id as typeof a.sub, chain }),
           },
-          // On Base a copy wallet without ETH cannot pay gas: it counts as empty (skipped, "copy wallet short").
+          // A copy wallet without GNOT cannot pay gas: it counts as empty (skipped, "copy wallet short").
           balanceUsdc: async (wallet) =>
-            cfg.gas.symbol === "ETH" && (await walletGasWei(cfg, wallet)) === 0n ? 0 : indexToUsd(await walletUsdcWei(cfg, wallet)),
-          stake: ({ walletId, marketId, side, amountUsdc }) =>
-            ctx.runQuery(internal.launchCopy.arcSub, { sub: a.sub, chain }).then((s) =>
-              circleStake(cfg, { walletId, address: s?.wallet ?? "" }, { kind: "pool", marketId, side, wei: usdToIndex(amountUsdc) }),
-            ),
+            (await walletGasUgnot(wallet, cfg.gno)) < MIN_GAS_UGNOT ? 0 : indexToUsd(await walletMusdWei(wallet, cfg.gno)),
+          stake: async ({ sub, marketId, side, amountUsdc }) => {
+            const signer = await sealedSigner(copyWalletScope(sub.agent, sub.follower), { address: sub.wallet, sealed: sub.sealed }, cfg.gno);
+            return (await gnoStake(signer, { kind: "pool", marketId, side, wei: usdToIndex(amountUsdc) }, cfg.gno)).txHash;
+          },
           log,
-          minStakeUsdc: indexToUsd(cfg.contracts.minStakeWei),
+          minStakeUsdc: indexToUsd(cfg.minStakeWei),
         },
         a,
       );
     } catch (err) {
-      log.error("arc copy job failed", { key: a.key, err });
+      log.error("copy job failed", { key: a.key, err });
       return "failed";
     }
   },

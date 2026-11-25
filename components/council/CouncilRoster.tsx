@@ -17,7 +17,7 @@ import { Link } from "@/i18n/navigation";
 import { formatUsdcUnitsBare } from "@/lib/money";
 import { ExternalMark } from "@/components/ExternalMark";
 import AgentFace from "@/components/launch/AgentFace";
-import { basescan, tokenPage, type AgentToken } from "@/lib/launch/council-view";
+import { tokenPage, type AgentToken } from "@/lib/launch/council-view";
 import { MARKET_CHAINS, explorerUrl } from "@/lib/chains/registry";
 
 export type Track = "classic" | "philosopher";

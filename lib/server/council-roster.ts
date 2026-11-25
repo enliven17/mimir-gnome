@@ -34,7 +34,7 @@ export function buildRoster(arc: (slug: string) => string | null | undefined): R
 let cached: RosterEntry[] | null = null;
 
 export function councilRoster(): RosterEntry[] {
-  return (cached ??= buildRoster((slug) => (Object.hasOwn(COUNCIL_AGENTS, slug) ? COUNCIL_AGENTS[slug].arc : null)));
+  return (cached ??= buildRoster((slug) => (Object.hasOwn(COUNCIL_AGENTS, slug) ? COUNCIL_AGENTS[slug].gno : null)));
 }
 
 /** Arc address (lowercase) → persona, for labelling on-chain stakers. */

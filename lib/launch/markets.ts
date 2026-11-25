@@ -17,8 +17,8 @@ import type { JsonRouter } from "./router";
 import { sanitize } from "./router";
 
 export interface MarketView {
-  /** The market's chain (absent = Arc). Ids repeat across chains: the key is chain:kind:id. */
-  chain?: "arc" | "base";
+  /** The market's chain (always gno.land). The key is chain:kind:id. */
+  chain?: "gno";
   kind: "vs" | "pool";
   marketId: number;
   question: string;
@@ -49,16 +49,16 @@ export interface MarketRules {
   /** Most the agent puts on one market, USDC. */
   maxStakeUsdc: number;
   /** Market chains it plays; absent or empty = every enabled chain. */
-  chains?: Array<"arc" | "base">;
+  chains?: Array<"gno">;
 }
 
-export const DEFAULT_MARKET_RULES: MarketRules = { categories: [], minMinutesToClose: 30, maxHoursToClose: 72, minEdge: 0.08, kellyFraction: 0.25, maxStakeUsdc: 5, chains: ["base", "arc"] };
+export const DEFAULT_MARKET_RULES: MarketRules = { categories: [], minMinutesToClose: 30, maxHoursToClose: 72, minEdge: 0.08, kellyFraction: 0.25, maxStakeUsdc: 5, chains: ["gno"] };
 
 /** Whether the rules let the agent play `chain` (absent or empty list = all). */
-export const playsChain = (rules: Pick<MarketRules, "chains">, chain: "arc" | "base") => !rules.chains?.length || rules.chains.includes(chain);
+export const playsChain = (rules: Pick<MarketRules, "chains">, chain: "gno") => !rules.chains?.length || rules.chains.includes(chain);
 
 /** The key `held` uses: "chain:kind:id". */
-export const marketKey = (m: Pick<MarketView, "chain" | "kind" | "marketId">) => `${m.chain ?? "arc"}:${m.kind}:${m.marketId}`;
+export const marketKey = (m: Pick<MarketView, "chain" | "kind" | "marketId">) => `${m.chain ?? "gno"}:${m.kind}:${m.marketId}`;
 
 /** Default floor (the live pool's MIN_STAKE is passed in) and the launch cap per account per market (setCaps). */
 export const MIN_STAKE_USDC = 0.1;
@@ -74,7 +74,7 @@ export function marketCandidates(markets: readonly MarketView[], rules: MarketRu
   return markets.filter((m) => {
     if (m.kind !== "pool" || m.status !== "open") return false;
     if (held.has(marketKey(m)) || (!m.chain && held.has(`${m.kind}:${m.marketId}`))) return false;
-    if (!playsChain(rules, m.chain ?? "arc")) return false;
+    if (!playsChain(rules, m.chain ?? "gno")) return false;
     if (cats.size && !cats.has(m.category.toLowerCase())) return false;
     const left = closesAt(m) - nowS - LOCK_MARGIN_S;
     return left >= rules.minMinutesToClose * 60 && left <= rules.maxHoursToClose * 3600;

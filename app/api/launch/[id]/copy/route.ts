@@ -1,36 +1,29 @@
 /**
  * Copying an agent's market stakes (lib/launch/copy-stake.ts).
- * GET  /api/launch/:id/copy?follower=<0x...>  the follower's subscription: on or off, the copy wallet to fund and its
- *                                             balance (public chain data; no wallet ids).
- * POST /api/launch/:id/copy                    signed by the follower: { arc?: {on, maxPerStakeUsdc}, base?: {...}, active }.
- *                                             Makes the copy wallet on that chain the first time copying is turned on.
- * Copies follow the leader's chain: the agent's Base stakes are copied from the Base copy wallet (USDC + a little ETH for
- * gas), its Arc stakes from the Arc one (USDC only).
+ * GET  /api/launch/:id/copy?follower=<g1...>  the follower's subscription: on or off, the copy wallet to fund and its
+ *                                             balances (public chain data; never the sealed key).
+ * POST /api/launch/:id/copy                    signed by the follower: { gno?: {on, maxPerStakeUsdc}, active }.
+ *                                             Makes the copy wallet (a gno.land key Mimir keeps sealed) the first time
+ *                                             copying is turned on. The follower funds it with mUSD and a little GNOT.
  */
 import { z } from "zod";
 
 import { api } from "@/convex/_generated/api";
 import { normalizeOwner } from "@/lib/owner";
-import { arcPublicClient } from "@/lib/arc/chain";
-import { ARC } from "@/lib/arc/config";
 import { COUNCIL_AGENTS } from "@/lib/launch/council-view";
 import { copyKeyFor } from "@/lib/launch/copy-key";
 import { fail, launchCx, readSigned } from "@/lib/launch/request";
-import { createWallets } from "@/lib/server/circle-w3s";
 import { indexToUsd } from "@/lib/chains/amounts";
-import { gasBalanceWei, usdcBalanceWei } from "@/lib/chains/client";
-import { circleBlockchain } from "@/lib/chains/house";
 import { MARKET_CHAINS } from "@/lib/chains/registry";
+import { copyWalletScope, newSealedWallet, walletGasUgnot, walletMusdWei, walletsEnabled } from "@/lib/server/gno-wallets";
 import { allowRequest, clientIp, tooManyRequests } from "@/lib/server/rate-limit";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 30;
 
-const Body = z.object({
-  arc: z.object({ on: z.boolean(), maxPerStakeUsdc: z.number().min(0.1).max(50) }).optional(),
-  base: z.object({ on: z.boolean(), maxPerStakeUsdc: z.number().min(0.1).max(50) }).optional(),
-  active: z.boolean(),
-});
+const G = MARKET_CHAINS.chains.gno.gno;
+const Settings = z.object({ on: z.boolean(), maxPerStakeUsdc: z.number().min(0.1).max(50) });
+const Body = z.object({ gno: Settings.optional(), active: z.boolean() });
 
 /** Council personas always stake; a launched agent when its owner turned staking on. */
 async function copyable(c: NonNullable<ReturnType<typeof launchCx>>, id: string) {
@@ -43,19 +36,17 @@ export async function GET(req: Request, ctx: { params: Promise<{ id: string }> }
   if (!(await allowRequest("launch-copy-read", clientIp(req), 60, 60_000))) return tooManyRequests(60);
   const { id } = await ctx.params;
   const follower = normalizeOwner(new URL(req.url).searchParams.get("follower"));
-  if (!follower) return fail(400, "follower must be an EVM address");
+  if (!follower) return fail(400, "follower must be a gno.land (g1) address");
   const c = launchCx();
   if (!c) return fail(503, "Launch is not configured on this server.");
   const can = await copyable(c, id);
   if (can === null) return fail(404, "No such agent.");
   const s = await c.client.query(api.launchCopy.forFollower, { secret: c.secret, agent: copyKeyFor(id), follower });
-  const usdc = s?.arc ? await arcPublicClient(ARC).getBalance({ address: s.arc.address as `0x${string}` }).then((w) => Number(w) / 1e18).catch(() => null) : null;
-  const baseCfg = MARKET_CHAINS.chains.base;
-  const baseW = s?.base ?? null;
-  const [baseUsdc, baseEth] = baseW
+  const w = s?.gno ?? null;
+  const [balanceUsdc, balanceGnot] = w
     ? await Promise.all([
-        usdcBalanceWei(baseCfg, baseW.address as `0x${string}`).then(indexToUsd).catch(() => null),
-        gasBalanceWei(baseCfg, baseW.address as `0x${string}`).then((w) => Number(w) / 1e18).catch(() => null),
+        walletMusdWei(w.address, G).then(indexToUsd).catch(() => null),
+        walletGasUgnot(w.address, G).then((u) => Number(u) / 1e6).catch(() => null),
       ])
     : [null, null];
   return Response.json(
@@ -64,8 +55,7 @@ export async function GET(req: Request, ctx: { params: Promise<{ id: string }> }
       sub: s && {
         active: s.active,
         pausedReason: s.pausedReason,
-        arc: s.arc && { address: s.arc.address, on: s.arc.on, maxPerStakeUsdc: s.arc.maxPerStakeUsdc, balanceUsdc: usdc },
-        base: baseW && { address: baseW.address, on: baseW.on, maxPerStakeUsdc: baseW.maxPerStakeUsdc, balanceUsdc: baseUsdc, balanceEth: baseEth },
+        gno: w && { address: w.address, on: w.on, maxPerStakeUsdc: w.maxPerStakeUsdc, balanceUsdc, balanceGnot },
       },
     },
     { headers: { "cache-control": "no-store" } },
@@ -83,31 +73,22 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
   if (!c) return fail(503, "Launch is not configured on this server.");
   const can = await copyable(c, id);
   if (can === null) return fail(404, "No such agent.");
-  const { arc, base, active } = parsed.data;
-  if ((arc?.on || base?.on) && !can) return fail(400, "This agent does not stake on markets.");
-  if (base?.on && !MARKET_CHAINS.chains.base.enabled) return fail(400, "Base markets are not configured on this server.");
+  const { gno, active } = parsed.data;
+  if (gno?.on && !can) return fail(400, "This agent does not stake on markets.");
   const key = copyKeyFor(id);
   try {
     const cur = await c.client.query(api.launchCopy.forFollower, { secret: c.secret, agent: key, follower: g.owner });
-    let a = cur?.arc ?? undefined;
-    if (arc) {
-      if (!a && arc.on) {
-        const [w] = await createWallets([`${id}-${g.owner.slice(0, 8)}`], ARC.network === "mainnet" ? "ARC" : "ARC-TESTNET", "mimir-copy");
-        a = { walletId: w.id, address: w.address, maxPerStakeUsdc: 0, on: false };
+    let w = cur?.gno ?? undefined;
+    if (gno) {
+      if (!w && gno.on) {
+        if (!walletsEnabled()) return fail(503, "Copy wallets are not configured on this server.");
+        w = { ...newSealedWallet(copyWalletScope(key, g.owner)), maxPerStakeUsdc: 0, on: false };
       }
-      if (a) a = { ...a, on: arc.on, maxPerStakeUsdc: arc.maxPerStakeUsdc };
-    }
-    let b = cur?.base ?? undefined;
-    if (base) {
-      if (!b && base.on) {
-        const [w] = await createWallets([`${id}-${g.owner.slice(0, 8)}-base`], circleBlockchain("base", MARKET_CHAINS.chains.base.network), "mimir-copy");
-        b = { walletId: w.id, address: w.address, maxPerStakeUsdc: 0, on: false };
-      }
-      if (b) b = { ...b, on: base.on, maxPerStakeUsdc: base.maxPerStakeUsdc };
+      if (w) w = { ...w, on: gno.on, maxPerStakeUsdc: gno.maxPerStakeUsdc };
     }
     // The stored wallet wins: a racing request's fresh wallet is dropped here, never handed out.
-    const stored = await c.client.mutation(api.launchCopy.upsert, { secret: c.secret, agent: key, follower: g.owner, ...(a ? { arc: a } : {}), ...(b ? { base: b } : {}), active });
-    return Response.json({ ok: true, arc: stored.arc, base: stored.base });
+    const stored = await c.client.mutation(api.launchCopy.upsert, { secret: c.secret, agent: key, follower: g.owner, ...(w ? { gno: w } : {}), active });
+    return Response.json({ ok: true, gno: stored.gno });
   } catch (e) {
     console.error(`[launch] copy ${id} failed:`, e);
     return fail(502, "Could not set up the copy wallet. Try again.");

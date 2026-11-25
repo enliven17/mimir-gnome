@@ -82,10 +82,9 @@ test("web roster: each persona with its Arc wallet, lowercase; none means an emp
   assert.equal(roster.find((e) => e.slug === "pessimist")?.address, "");
 });
 
-test("council agents have an Arc wallet and no other chain but an optional Base wallet", () => {
+test("council agents carry only a gno.land account (from GNO_COUNCIL_WALLETS) and no EVM wallet", () => {
   for (const [slug, a] of Object.entries(COUNCIL_AGENTS)) {
-    assert.ok(a.arc === null || /^0x[0-9a-f]{40}$/i.test(a.arc), slug);
-    assert.ok(a.base === null || /^0x[0-9a-f]{40}$/i.test(a.base.address), slug);
-    assert.deepEqual(Object.keys(a).sort(), ["arc", "base", "name", "slug", "ticker", "token"], slug);
+    assert.ok(a.gno === null || /^g1[02-9ac-hj-np-z]{38}$/.test(a.gno), slug);
+    assert.deepEqual(Object.keys(a).sort(), ["gno", "name", "slug", "ticker", "token"], slug);
   }
 });

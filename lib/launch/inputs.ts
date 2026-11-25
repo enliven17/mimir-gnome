@@ -12,7 +12,7 @@ export const Markets = z.object({
   /** The most it may have staked at once. */
   budgetUsdc: z.number().min(0).max(10_000).default(20),
   /** Which market chains it plays (default: every enabled one). */
-  chains: z.array(z.enum(["base", "arc"])).min(1).max(2).default(["base", "arc"]),
-  /** Opening its own markets (lib/launch/agent-markets.ts): off by default; gas and the seed stake from its own wallet on each chain it plays. */
+  chains: z.array(z.literal("gno")).min(1).max(1).default(["gno"]),
+  /** Opening its own markets (lib/launch/agent-markets.ts): off by default; gas (GNOT) and the seed stake from its own wallet. */
   create: z.object({ enabled: z.boolean(), perDay: z.number().int().min(1).max(AGENT_MARKETS_PER_DAY_MAX) }).default({ enabled: false, perDay: 1 }),
 });

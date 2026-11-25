@@ -6,7 +6,7 @@ import { internalMutation, mutation, query, type MutationCtx, type QueryCtx } fr
 import type { Doc } from "./_generated/dataModel";
 import { secretMatches } from "../lib/internal-secrets";
 import { reservedLaunchSlug } from "../lib/launch/copy-key";
-import { vAgentToken, vChain } from "./schema";
+import { vAgentToken, vChain, vSealedWallet } from "./schema";
 
 function allowed(secret: string) {
   if (!secretMatches("launch", secret)) throw new Error("not allowed");
@@ -20,25 +20,21 @@ const vBrain = v.union(
   v.object({ kind: v.literal("byok"), provider: v.string(), sealed: v.string(), last4: v.string(), model: v.string() }),
 );
 
-const log = (ctx: MutationCtx, agent: Doc<"launchAgents">["_id"], kind: string, text: string, extra: { chain?: "arc" | "base"; tx?: string } = {}) =>
+const log = (ctx: MutationCtx, agent: Doc<"launchAgents">["_id"], kind: string, text: string, extra: { chain?: "gno"; tx?: string } = {}) =>
   ctx.db.insert("launchEvents", { agent, at: Date.now(), kind, text: text.slice(0, 300), ...extra });
 
-const tokenWhere = (chain: "arc" | "base") => (chain === "arc" ? "Argus (Arc)" : "Clanker (Base)");
-
-/** A new agent is live at once: creating one is free, staking waits for its owner's USDC in its Arc wallet. */
+/** A new agent is live at once: creating one is free, staking waits for its owner's mUSD (and GNOT for gas) in its wallet. */
 export const create = mutation({
   args: {
     secret: v.string(), slug: v.string(), uid: v.string(), owner: v.string(), name: v.string(), ticker: v.string(), avatarSeed: v.string(), thesis: v.string(),
     brain: vBrain,
     markets: v.object({ enabled: v.boolean(), rules: v.any(), budgetUsdc: v.number(), create: v.optional(v.object({ enabled: v.boolean(), perDay: v.number() })) }),
-    arc: v.optional(v.object({ walletId: v.string(), address: v.string() })),
-    /** Its Base wallet (Circle), when Base markets are enabled; else made on first use (setBaseWallet). */
-    base: v.optional(v.object({ walletId: v.string(), address: v.string() })),
+    /** Its gno.land account: the address and the sealed key (lib/server/gno-wallets.ts). */
+    gno: vSealedWallet,
   },
   handler: async (ctx, { secret, ...a }) => {
     await assertMarketDeployment(ctx);
     allowed(secret);
-    if (!a.arc && !a.base) throw new Error("An agent needs a wallet on an enabled network.");
     // Never a persona's or a house name (lib/launch/copy-key.ts), checked again here and for every suffixed try.
     if (reservedLaunchSlug(a.slug)) return { ok: false as const, reason: "reserved" as const };
     // Tickers may repeat; the slug in the URL stays unique: odin, odin-2, ...
@@ -48,9 +44,7 @@ export const create = mutation({
       slug = `${a.slug}-${n}`;
     }
     const id = await ctx.db.insert("launchAgents", { ...a, slug, status: "live", createdAt: Date.now() });
-    await log(ctx, id, "rules", a.base
-      ? "created: send USDC to its Base wallet (plus a little ETH for gas) or to its Arc wallet, and it starts staking"
-      : "created: send USDC to its Arc wallet and it starts staking", { chain: a.base ? "base" : "arc" });
+    await log(ctx, id, "rules", "created: send mUSD and a little GNOT for gas to its gno.land account and it starts staking", { chain: "gno" });
     return { ok: true as const, slug };
   },
 });
@@ -63,7 +57,7 @@ export const forOwner = query({
     allowed(secret);
     const a = await bySlug(ctx, slug);
     return a && {
-      owner: a.owner, name: a.name, ticker: a.ticker, avatarSeed: a.avatarSeed, status: a.status, uid: a.uid, arc: a.arc, base: a.base ?? null, token: a.token ?? null,
+      owner: a.owner, name: a.name, ticker: a.ticker, avatarSeed: a.avatarSeed, status: a.status, uid: a.uid, gno: a.gno ?? null, token: a.token ?? null,
     };
   },
 });
@@ -82,7 +76,7 @@ export const recordToken = mutation({
     if (a.token) return a.token.address.toLowerCase() === token.address.toLowerCase() ? "ok" : "has-token";
     if (await ctx.db.query("launchAgents").withIndex("by_token", (q) => q.eq("token.address", token.address)).first()) return "taken";
     await ctx.db.patch(a._id, { token });
-    await log(ctx, a._id, "rules", `its owner launched $${a.ticker} on ${tokenWhere(token.chain)}; every creator fee goes to the owner`, { chain: token.chain, tx: token.launchTx });
+    await log(ctx, a._id, "rules", `its owner launched $${a.ticker} as a GRC20 on gno.land; the owner is its admin`, { chain: token.chain, tx: token.launchTx });
     return "ok";
   },
 });
@@ -107,7 +101,7 @@ export const setStatus = mutation({
     if (!a || a.owner !== owner || a.status === "killed") return false;
     await ctx.db.patch(a._id, { status });
     await log(ctx, a._id, "rules", status === "killed"
-      ? "shut down by its owner: no new stakes (open stakes settle on their own; withdraw USDC any time)"
+      ? "shut down by its owner: no new stakes (open stakes settle on their own; withdraw mUSD any time)"
       : `${status === "live" ? "resumed" : "paused"} by its owner`);
     return true;
   },
@@ -119,8 +113,8 @@ const publicView = (a: Doc<"launchAgents">) => ({
   slug: a.slug, owner: a.owner, name: a.name, ticker: a.ticker, avatarSeed: a.avatarSeed, thesis: a.thesis, status: a.status,
   brain: a.brain.kind === "byok" ? { kind: "byok" as const, provider: a.brain.provider, last4: a.brain.last4, model: a.brain.model } : a.brain,
   markets: { enabled: a.markets.enabled, budgetUsdc: a.markets.budgetUsdc, create: a.markets.create?.enabled ?? false },
-  arc: a.arc?.address ?? null, base: a.base?.address ?? null, createdAt: a.createdAt,
-  token: a.token ? { chain: a.token.chain, address: a.token.address, splitter: a.token.splitter ?? null, launchTx: a.token.launchTx } : null,
+  gno: a.gno?.address ?? null, createdAt: a.createdAt,
+  token: a.token ? { chain: a.token.chain, address: a.token.address, symbol: a.token.symbol, launchTx: a.token.launchTx } : null,
 });
 export type PublicAgent = ReturnType<typeof publicView>;
 
@@ -134,7 +128,7 @@ export const card = query({
   },
 });
 
-/** The full agent page (its reasoning log), served by /api/launch/:id/detail with its Arc record. */
+/** The full agent page (its reasoning log), served by /api/launch/:id/detail with its market record. */
 export const detail = query({
   args: { secret: v.string(), slug: v.string() },
   handler: async (ctx, { secret, slug }) => {
@@ -156,44 +150,31 @@ export const byOwner = query({
   },
 });
 
-/** The agent's Base wallet, made on first use by the tick (convex/launchArc.ts); never replaced once stored. */
-export const setBaseWallet = internalMutation({
-  args: { id: v.id("launchAgents"), base: v.object({ walletId: v.string(), address: v.string() }) },
-  handler: async (ctx, { id, base }) => {
-    await assertMarketDeployment(ctx);
-    const a = await ctx.db.get(id);
-    if (!a || a.base) return a?.base ?? null;
-    await ctx.db.patch(id, { base });
-    await log(ctx, id, "rules", "its Base wallet is ready: send it USDC and a little ETH for gas to stake on Base", { chain: "base" });
-    return base;
-  },
-});
-
 // ---------------- the market tick (convex/launchArc.ts) ----------------
 
 /**
- * What an agent holds on every chain (keys "chain:kind:id") and how much is still out (unsettled, USDC across chains),
- * from the chain (the indexed positions of its Arc and Base wallets) and from our own records: a Circle call that timed
- * out can still land, and the index sees it within seconds, so it is never staked twice. Also used by
+ * What an agent holds (keys "chain:kind:id") and how much is still out (unsettled, mUSD), from the chain (the indexed
+ * positions of its account) and from our own records: a send that timed out can still land, and the index sees it
+ * within seconds, so it is never staked twice. Also used by
  * convex/launchMarketsDb.ts for the seed stake of a market it opens.
  */
 export async function holdings(ctx: QueryCtx | MutationCtx, a: Doc<"launchAgents">): Promise<{ held: string[]; openUsdc: number }> {
   const recorded = await ctx.db.query("launchStakes").withIndex("by_agent", (q) => q.eq("agent", a._id)).collect();
   const out = new Map<string, number>();
-  const wallets = [...new Set([a.arc?.address, a.base?.address].filter((w): w is string => Boolean(w)).map((w) => w.toLowerCase()))];
+  const wallets = a.gno ? [a.gno.address.toLowerCase()] : [];
   for (const w of wallets) {
     for (const p of await ctx.db.query("arcPositions").withIndex("by_user", (q) => q.eq("user", w)).collect()) {
-      const k = `${p.chain ?? "arc"}:${p.kind}:${p.marketId}`;
+      const k = `${p.chain ?? "gno"}:${p.kind}:${p.marketId}`;
       out.set(k, (out.get(k) ?? 0) + Number(BigInt(p.amount)) / 1e18);
     }
   }
   for (const s of recorded) {
-    const k = `${s.chain ?? "arc"}:${s.kind}:${s.marketId}`;
+    const k = `${s.chain ?? "gno"}:${s.kind}:${s.marketId}`;
     if (!out.has(k)) out.set(k, s.usdc);
   }
   let openUsdc = 0;
   for (const [key, usdc] of out) {
-    const [chain, kind, id] = key.split(":") as ["arc" | "base", "vs" | "pool", string];
+    const [chain, kind, id] = key.split(":") as ["gno", "vs" | "pool", string];
     const m = await ctx.db.query("arcMarkets").withIndex("by_market", (q) => q.eq("chain", chain).eq("kind", kind).eq("marketId", Number(id))).unique();
     if (!m || !["resolved", "cancelled"].includes(m.status)) openUsdc += usdc;
   }
@@ -213,7 +194,7 @@ export const claimMarketAgents = internalMutation({
     for (const a of due) await ctx.db.patch(a._id, { lastTickAt: now });
     return Promise.all(due.map(async (a) => {
       const { held, openUsdc } = await holdings(ctx, a);
-      return { id: a._id, slug: a.slug, uid: a.uid, thesis: a.thesis, brain: a.brain, markets: a.markets, arc: a.arc, base: a.base ?? null, held, openUsdc };
+      return { id: a._id, slug: a.slug, uid: a.uid, thesis: a.thesis, brain: a.brain, markets: a.markets, gno: a.gno ?? null, house: a.house ?? null, held, openUsdc };
     }));
   },
 });
@@ -258,11 +239,11 @@ export const publicMarketRecord = query({
   args: { address: v.string() },
   handler: async (ctx, { address }) => {
     await assertMarketDeployment(ctx);
-    if (!/^0x[0-9a-fA-F]{40}$/.test(address)) return null;
+    if (!/^g1[02-9ac-hj-np-z]{38}$/i.test(address)) return null;
     const rows = await ctx.db.query("arcPositions").withIndex("by_user", (q) => q.eq("user", address.toLowerCase())).take(301);
     const records = [];
     for (const p of rows.slice(0, 300)) {
-      const chain = p.chain ?? "arc";
+      const chain = p.chain ?? "gno";
       const m = await ctx.db.query("arcMarkets").withIndex("by_market", (q) => q.eq("chain", chain).eq("kind", p.kind).eq("marketId", p.marketId)).unique();
       if (!m || m.isPrivate) continue;
       const outcome = m.status === "cancelled" || (m.status === "resolved" && m.winner > 2) ? "refunded" : m.status !== "resolved" ? "open" : m.winner === p.side ? "won" : "lost";
@@ -273,7 +254,7 @@ export const publicMarketRecord = query({
 });
 
 /**
- * Any Arc address's record on Mimir markets, from the index: every position with its market and outcome. `pnl` is
+ * Any gno.land account's record on Mimir markets, from the index: every position with its market and outcome. `pnl` is
  * the pari-mutuel result before fees (won: its share of the losing side; lost: minus the stake; open or refunded: 0).
  */
 export const arcRecord = query({
@@ -285,7 +266,7 @@ export const arcRecord = query({
     const positions = await ctx.db.query("arcPositions").withIndex("by_user", (q) => q.eq("user", user)).order("desc").take(300);
     const bets = [];
     for (const p of positions) {
-      const chain = p.chain ?? "arc";
+      const chain = p.chain ?? "gno";
       const m = await ctx.db.query("arcMarkets").withIndex("by_market", (q) => q.eq("chain", chain).eq("kind", p.kind).eq("marketId", p.marketId)).unique();
       if (!m) continue;
       const usdc = Number(BigInt(p.amount)) / 1e18;

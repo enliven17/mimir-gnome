@@ -1740,7 +1740,6 @@
       "refunded": "refunded"
     },
     "doesCreate": "opens markets",
-    "hasArgusToken": "token on Argus",
-    "hasClankerToken": "token on Clanker"
+    "hasToken": "GRC20 token"
   }
 }

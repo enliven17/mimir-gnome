@@ -121,3 +121,9 @@ export const walletGasUgnot = (address: string, cfg: GnoConfig = GNO) => gasBala
 
 /** The gas one transaction may burn (lib/gno/config.ts fee), ugnot: below it a wallet cannot send. */
 export const MIN_GAS_UGNOT = BigInt(GNO.gas.fee);
+
+/** The scope a launch agent's sealed key is bound to: its uid, fixed for the agent's life (convex/schema.ts). */
+export const launchWalletScope = (uid: string) => `launch:${uid}`;
+
+/** The scope of a follower's copy wallet for one agent (lib/launch/copy-key.ts key + the follower's address). */
+export const copyWalletScope = (agentKey: string, follower: string) => `copy:${agentKey}:${follower.toLowerCase()}`;

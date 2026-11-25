@@ -75,7 +75,7 @@ export default function LaunchWizard() {
   const [f, setF] = useState<Form>(INITIAL);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const [created, setCreated] = useState<{ id: string; arc: string | null; base: string | null } | null>(null);
+  const [created, setCreated] = useState<{ id: string; gno: string | null } | null>(null);
   // The connected Adena account owns the agent (lib/launch/auth.ts).
   const { address: owner0, signMessage } = useMimirWallet();
   const { open } = useWalletSheet();
@@ -101,7 +101,7 @@ export default function LaunchWizard() {
     setBusy(true);
     setError(null);
     try {
-      const r = await signedPost<{ id: string; arc: string | null; base: string | null }>("/api/launch", { owner: owner0, signMessage, action: "create", agent: "new", body: body() });
+      const r = await signedPost<{ id: string; gno: string | null }>("/api/launch", { owner: owner0, signMessage, action: "create", agent: "new", body: body() });
       trackProductEvent("live_agent_created", { mode: "live", chain: "gno" });
       setCreated(r);
     } catch (e) {
@@ -123,7 +123,7 @@ export default function LaunchWizard() {
           </div>
         </div>
         <p className="m-0 text-[14px] text-cream">{f.name} is live. Send it mUSD and a little GNOT for gas from its page and it starts staking. You can withdraw any time.</p>
-        <p className="m-0 break-all rounded-xl bg-ink-deep px-3 py-2 font-mono text-[12px] text-muted">{created.base ?? created.arc}</p>
+        <p className="m-0 break-all rounded-xl bg-ink-deep px-3 py-2 font-mono text-[12px] text-muted">{created.gno}</p>
         <Link href={`/launch/${created.id}`} className="btn-primary justify-self-start !w-auto !px-5">
           Open its page
         </Link>

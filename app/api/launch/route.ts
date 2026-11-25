@@ -1,17 +1,15 @@
 /**
- * POST /api/launch                 create an agent (signed by the owner, lib/launch/auth.ts): validate, make its Arc
- *                                  wallet, store it live. Free: nothing to fund first. Returns its id and Arc wallet.
- * GET  /api/launch?owner=<0x...>   that wallet's agents (public views).
+ * POST /api/launch                 create an agent (signed by the owner, lib/launch/auth.ts): validate, make its
+ *                                  gno.land account (a sealed key, lib/server/gno-wallets.ts), store it live. Free:
+ *                                  nothing to fund first. Returns its id and account address.
+ * GET  /api/launch?owner=<g1...>   that account's agents (public views).
  */
 import { api } from "@/convex/_generated/api";
-import { circleBlockchain } from "@/lib/chains/house";
-import { MARKET_CHAINS } from "@/lib/chains/registry";
 import { normalizeOwner } from "@/lib/owner";
 import { checkKey } from "@/lib/launch/byok";
 import { CreateBody, create } from "@/lib/launch/flow";
 import { fail, launchCx, readSigned } from "@/lib/launch/request";
-import { ARC } from "@/lib/arc/config";
-import { createWallets } from "@/lib/server/circle-w3s";
+import { launchWalletScope, newSealedWallet, walletsEnabled } from "@/lib/server/gno-wallets";
 import { allowRequest, clientIp, tooManyRequests } from "@/lib/server/rate-limit";
 
 export const dynamic = "force-dynamic";
@@ -20,7 +18,7 @@ export const maxDuration = 30;
 export async function GET(req: Request) {
   if (!(await allowRequest("launch-read", clientIp(req), 60, 60_000))) return tooManyRequests(60);
   const owner = normalizeOwner(new URL(req.url).searchParams.get("owner"));
-  if (!owner) return fail(400, "owner must be an EVM address");
+  if (!owner) return fail(400, "owner must be a gno.land (g1) address");
   const c = launchCx();
   if (!c) return fail(503, "Launch is not configured on this server.");
   return Response.json({ agents: await c.client.query(api.launch.byOwner, { owner }) }, { headers: { "cache-control": "no-store" } });
@@ -35,25 +33,14 @@ export async function POST(req: Request) {
   if (!parsed.success) return fail(400, parsed.error.issues[0]?.message ?? "Invalid agent.");
   const c = launchCx();
   if (!c) return fail(503, "Launch is not configured on this server.");
+  if (!walletsEnabled()) return fail(503, "Agent accounts are not configured on this server (GNO_WALLET_SECRET).");
   try {
     const r = await create(c, {
       checkKey: (p, k, m) => checkKey(p, k, m),
-      wallets: {
-        arc: MARKET_CHAINS.chains.arc.enabled ? async (slug) => {
-          const [w] = await createWallets([slug], ARC.network === "mainnet" ? "ARC" : "ARC-TESTNET", "mimir-launch");
-          return { id: w.id, address: w.address };
-        } : undefined,
-        // Base markets on: its Base wallet too (BASE / BASE-SEPOLIA). It needs ETH for gas, sent by its owner or Mimir.
-        base: MARKET_CHAINS.chains.base.enabled
-          ? async (slug) => {
-              const [w] = await createWallets([slug], circleBlockchain("base", MARKET_CHAINS.chains.base.network), "mimir-launch");
-              return { id: w.id, address: w.address };
-            }
-          : undefined,
-      },
+      wallets: { gno: (uid) => newSealedWallet(launchWalletScope(uid)) },
     }, g.owner, parsed.data);
     if (!r.ok) return fail(r.status, r.error);
-    return Response.json({ id: r.id, arc: r.arc, base: r.base });
+    return Response.json({ id: r.id, gno: r.gno });
   } catch (e) {
     console.error("[launch] create failed:", e);
     const msg = e instanceof Error ? e.message : "";

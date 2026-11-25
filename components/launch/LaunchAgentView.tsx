@@ -39,10 +39,9 @@ export default function LaunchAgentView({ slug, council }: { slug: string; counc
   if (!council && !card) return <EmptyState>{t("notFound")}</EmptyState>;
 
   const a = council
-    ? { name: council.displayName, ticker: council.ticker, seed: slug, about: council.bio, token: council.token, arc: council.arc, base: council.base?.address ?? null, house: true }
-    : { name: card!.name, ticker: card!.ticker, seed: card!.avatarSeed, about: card!.thesis, token: card!.token, arc: card!.arc, base: card!.base, house: false };
-  // The agent's gno.land wallet: the backend still reports it in its legacy per-chain fields.
-  const wallet = [a.base, a.arc].find((w): w is string => typeof w === "string" && w.startsWith("g1")) ?? null;
+    ? { name: council.displayName, ticker: council.ticker, seed: slug, about: council.bio, token: council.token, gno: council.gno, house: true }
+    : { name: card!.name, ticker: card!.ticker, seed: card!.avatarSeed, about: card!.thesis, token: card!.token, gno: card!.gno, house: false };
+  const wallet = a.gno;
 
   return (
     <div className="grid grid-cols-[minmax(0,1fr)] gap-6 sm:gap-8">
@@ -64,7 +63,7 @@ export default function LaunchAgentView({ slug, council }: { slug: string; counc
       <FollowButton target={`agent:${slug}`} label="Follow agent forecasts" />
       <PublicMarketRecord address={wallet} />
       <WalletsBlock ticker={a.ticker} wallet={wallet} />
-      <TokenBlock slug={slug} ticker={a.ticker} owner={card?.owner ?? null} status={card?.status ?? "live"} />
+      <TokenBlock slug={slug} ticker={a.ticker} owner={card?.owner ?? null} status={card?.status ?? "live"} token={a.token} />
       {!a.house && card ? <OwnerControls slug={slug} owner={card.owner} status={card.status} wallet={wallet} /> : null}
       <CopyPanel slug={slug} ticker={a.ticker} />
       <RecordSection slug={slug} />

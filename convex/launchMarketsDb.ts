@@ -19,14 +19,13 @@ const dayStart = (now: number) => {
 };
 
 /**
- * Today's count and the last one, from our records and from the chain index (by its Arc and Base wallets): a Circle
- * call that timed out but landed is not in our records, and must still count. One draft opened on two chains (one
- * pairKey) counts once.
+ * Today's count and the last one, from our records and from the chain index (by its account): a transaction that
+ * timed out but landed is not in our records, and must still count.
  */
 async function opened(ctx: QueryCtx, agent: Id<"launchAgents">, wallets: Array<string | undefined>, now: number) {
   const rows = await ctx.db.query("launchMarkets").withIndex("by_agent", (q) => q.eq("agent", agent).gte("at", dayStart(now))).collect();
   const last = await ctx.db.query("launchMarkets").withIndex("by_agent", (q) => q.eq("agent", agent)).order("desc").first();
-  const drafts = new Set(rows.map((r) => r.pairKey ?? r._id)).size;
+  const drafts = rows.length;
   let chainToday = 0;
   let chainLast = 0;
   for (const w of new Set(wallets.filter((x): x is string => Boolean(x)).map((x) => x.toLowerCase()))) {
@@ -43,13 +42,13 @@ export const createAll = internalMutation({
   args: {},
   handler: async (ctx) => {
     await assertMarketDeployment(ctx);
-    // Opening markets has its own switch (LAUNCH_AGENT_MARKETS=1) on top of LAUNCH_ARC: staking can run without it.
-    if (process.env.MIMIR_BACKEND_OFF === "1" || process.env.LAUNCH_ARC !== "1" || process.env.LAUNCH_AGENT_MARKETS !== "1") return 0;
+    // Opening markets has its own switch (LAUNCH_AGENT_MARKETS=1) on top of LAUNCH_AGENTS: staking can run without it.
+    if (process.env.MIMIR_BACKEND_OFF === "1" || process.env.LAUNCH_AGENTS !== "1" || process.env.LAUNCH_AGENT_MARKETS !== "1") return 0;
     const now = Date.now();
     let n = 0;
     for (const a of await ctx.db.query("launchAgents").withIndex("by_status", (q) => q.eq("status", "live")).collect()) {
-      if (!a.markets.create?.enabled || !a.arc || (a.leaseUntil ?? 0) > now) continue;
-      const o = await opened(ctx, a._id, [a.arc?.address, a.base?.address], now);
+      if (!a.markets.create?.enabled || !a.gno || (a.leaseUntil ?? 0) > now) continue;
+      const o = await opened(ctx, a._id, [a.gno.address], now);
       if (o.today >= perDay(a) || now - o.lastAt < SPACING_MS) continue;
       await ctx.scheduler.runAfter(0, internal.launchMarkets.createOne, { id: a._id });
       n++;
@@ -64,19 +63,19 @@ export const forCreate = internalQuery({
   handler: async (ctx, { id }) => {
     await assertMarketDeployment(ctx);
     const a = await ctx.db.get(id);
-    if (!a || a.status !== "live" || !a.arc || !a.markets.create?.enabled) return null;
+    if (!a || a.status !== "live" || !a.gno || !a.markets.create?.enabled) return null;
     const now = Date.now();
-    const o = await opened(ctx, a._id, [a.arc?.address, a.base?.address], now);
+    const o = await opened(ctx, a._id, [a.gno.address], now);
     if (o.today >= perDay(a) || now - o.lastAt < SPACING_MS) return null;
     const { openUsdc } = await holdings(ctx, a);
-    const rules = (a.markets.rules ?? {}) as { categories?: string[]; chains?: Array<"arc" | "base"> };
-    return { slug: a.slug, uid: a.uid, thesis: a.thesis, brain: a.brain, arc: a.arc, base: a.base ?? null, chains: rules.chains ?? [], categories: rules.categories ?? [], budgetUsdc: a.markets.budgetUsdc, openUsdc };
+    const rules = (a.markets.rules ?? {}) as { categories?: string[] };
+    return { slug: a.slug, uid: a.uid, thesis: a.thesis, brain: a.brain, gno: a.gno, categories: rules.categories ?? [], budgetUsdc: a.markets.budgetUsdc, openUsdc };
   },
 });
 
 export const record = internalMutation({
   args: {
-    agent: v.id("launchAgents"), chain: vChain, pairKey: v.optional(v.string()), question: v.string(), category: v.string(), resolutionUrl: v.string(), deadline: v.number(),
+    agent: v.id("launchAgents"), chain: vChain, question: v.string(), category: v.string(), resolutionUrl: v.string(), deadline: v.number(),
     side: v.number(), seedUsdc: v.number(), tx: v.string(), why: v.string(),
   },
   handler: async (ctx, a) => {
@@ -84,7 +83,7 @@ export const record = internalMutation({
     await ctx.db.insert("launchMarkets", { ...a, at: Date.now() });
     await ctx.db.insert("launchEvents", {
       agent: a.agent, at: Date.now(), kind: "market", chain: a.chain, tx: a.tx,
-      text: `opened a market on ${a.chain === "base" ? "Base" : "Arc"}: "${a.question.slice(0, 120)}" (${a.category}), staking ${a.seedUsdc} USDC on its side`.slice(0, 300),
+      text: `opened a market: "${a.question.slice(0, 120)}" (${a.category}), staking ${a.seedUsdc} mUSD on its side`.slice(0, 300),
     });
   },
 });
