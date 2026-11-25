@@ -5,6 +5,7 @@
  * routes (list, set webhook). Everything degrades to a no-op without
  * DATABASE_URL.
  */
+import { MARKET_CHAINS } from "../chains/registry";
 import { createHmac, randomBytes } from "node:crypto";
 import { request as httpsRequest } from "node:https";
 
@@ -20,8 +21,8 @@ import { createDeliveryQueue } from "./webhook-queue";
 import { deliverTelegram } from "./telegram";
 import { telegramToken } from "../telegram";
 
-/** Rows are keyed by the market contract they belong to. */
-const PROGRAM = () => (process.env.NEXT_PUBLIC_MIMIR_V3_ADDRESS ?? "").trim().toLowerCase();
+/** Rows are keyed by the market realm they belong to (r/vs). */
+const PROGRAM = () => MARKET_CHAINS.chains.gno.realms.vs;
 const DELIVERY_TIMEOUT_MS = 5_000;
 
 /** Deliveries run in the background: max 4 in flight, per-URL breaker (webhook-queue.ts). */

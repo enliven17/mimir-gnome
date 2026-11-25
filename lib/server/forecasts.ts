@@ -4,10 +4,11 @@
  * keeps the first forecast, the one made furthest from the outcome.
  * Best-effort: without DATABASE_URL nothing is recorded.
  */
+import { MARKET_CHAINS } from "../chains/registry";
 import { isDbEnabled, query } from "./db";
 
-/** Rows are keyed by the market contract they belong to. */
-const PROGRAM = () => (process.env.NEXT_PUBLIC_MIMIR_V3_ADDRESS ?? "").trim().toLowerCase();
+/** Rows are keyed by the market realm they belong to (r/vs). */
+const PROGRAM = () => MARKET_CHAINS.chains.gno.realms.vs;
 
 export async function recordForecast(args: {
   claimId: number;

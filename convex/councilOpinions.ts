@@ -2,6 +2,7 @@ import { assertMarketDeployment } from "./marketDeploymentGuard";
 import { v } from "convex/values";
 import { internalMutation, internalQuery, query } from "./_generated/server";
 import { vChain } from "./schema";
+import { houseCreatorWallet } from "../lib/chains/house";
 const kind = v.union(v.literal("vs"), v.literal("pool"));
 export const forWorker = internalQuery({ args: { chain: vChain, kind, marketId: v.number() }, handler: async (ctx, a) =>
   {
@@ -19,7 +20,7 @@ export const forMarket = query({ args: { chain: v.optional(vChain), kind, market
 /** Counts attempts before a model call. Failed calls consume quota too. */
 export const claim = internalMutation({ args: { creator: v.string() }, handler: async (ctx, { creator }) => {
     await assertMarketDeployment(ctx);
-  let house = ""; try { house = String(JSON.parse(process.env.ARC_CREATOR_WALLET ?? "null")?.address ?? "").toLowerCase(); } catch { /* no exemption */ }
+  const house = houseCreatorWallet()?.address ?? "";
   const day = new Date().toISOString().slice(0, 10), limit = Math.min(30, Math.max(0, Number(process.env.COUNCIL_TAKES_PER_CREATOR_DAY ?? 3) || 0));
   const row = await ctx.db.query("councilForecastBudgets").withIndex("by_creator", (q) => q.eq("creator", creator)).unique();
   const calls = row?.day === day ? row.calls : 0;

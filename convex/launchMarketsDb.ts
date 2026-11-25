@@ -1,7 +1,7 @@
 import { assertMarketDeployment } from "./marketDeploymentGuard";
 // Mimir Launch: agents opening their own markets (convex/launchMarkets.ts does the chain work). The hourly cron is a
 // cheap mutation: it only schedules an action for agents whose owner turned it on, that are under their daily count,
-// and whose last market is a few hours old. Gated by LAUNCH_ARC=1 and its own LAUNCH_AGENT_MARKETS=1.
+// and whose last market is a few hours old. Gated by LAUNCH_AGENTS=1 and its own LAUNCH_AGENT_MARKETS=1.
 import { v } from "convex/values";
 import { internal } from "./_generated/api";
 import { internalMutation, internalQuery, type QueryCtx } from "./_generated/server";
