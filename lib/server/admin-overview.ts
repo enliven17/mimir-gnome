@@ -1,18 +1,20 @@
 /**
  * Everything the admin panel shows, gathered on the server in one pass: the backend's own read (convex/arcAdmin.ts),
- * the Arc chain (contracts, balances, solvency), the app records in the backend, Telegram and the RPCs. Each probe is timed and
- * fails on its own, so one dead service shows as red instead of blanking the page. Read-only; no secret values leave
- * this module, only whether they are set.
+ * gno.land (the realms' roles, caps and mUSD holdings, balances, solvency), the app records in the backend, Telegram
+ * and the RPC. Each probe is timed and fails on its own, so one dead service shows as red instead of blanking the
+ * page. Read-only; no secret values leave this module, only whether they are set.
  */
 import { internalSecret } from "@/lib/internal-secrets";
 import { ConvexHttpClient } from "convex/browser";
-import { createPublicClient, http, parseAbi, type Address } from "viem";
 
 import { api } from "@/convex/_generated/api";
-import { arcPublicClient } from "@/lib/arc/chain";
-import { ARC } from "@/lib/arc/config";
+import { gasBalanceUgnot, latestBlockHeight, musdBalanceWei } from "@/lib/chains/client";
+import { MARKET_CHAINS } from "@/lib/chains/registry";
+import { realmAddress } from "@/lib/gno/address";
+import { fromMusdUnits } from "@/lib/gno/msgs";
+import { poolConfig, vsConfig, type MarketConfig } from "@/lib/gno/reads";
+import { qevalInts } from "@/lib/gno/rpc";
 import { store, storeEnabled } from "@/lib/server/store";
-import { baseRpcUrl } from "@/lib/base/chain";
 
 export type Health = "ok" | "warn" | "down";
 export interface Probe<T> {
@@ -23,8 +25,11 @@ export interface Probe<T> {
 }
 
 const TIMEOUT_MS = 8_000;
-/** Below this many USDC an operating wallet is flagged: it pays gas and stakes. */
+/** Below this many mUSD an operating account is flagged; below LOW_GNOT GNOT it can barely pay gas. */
 const LOW_USDC = 1;
+const LOW_GNOT = 1;
+const CHAIN = MARKET_CHAINS.chains.gno;
+const G = CHAIN.gno;
 
 async function probe<T>(fn: () => Promise<T>): Promise<Probe<T>> {
   const t0 = Date.now();
@@ -36,18 +41,6 @@ async function probe<T>(fn: () => Promise<T>): Promise<Probe<T>> {
   }
 }
 
-const READ_ABI = parseAbi([
-  "function owner() view returns (address)",
-  "function oracle() view returns (address)",
-  "function feeRecipient() view returns (address)",
-  "function paused() view returns (bool)",
-  "function arbiter() view returns (address)",
-  "function maxMarketStake() view returns (uint256)",
-  "function maxAccountStake() view returns (uint256)",
-  "function lifetimeFeesAccrued() view returns (uint256)",
-  "function lifetimeFeesClaimed() view returns (uint256)",
-]);
-
 async function backend() {
   const url = process.env.NEXT_PUBLIC_CONVEX_URL?.trim();
   const secret = internalSecret("admin");
@@ -56,46 +49,37 @@ async function backend() {
   return new ConvexHttpClient(url).query(api.arcAdmin.overview, { secret });
 }
 
-async function contract(address: Address | null) {
-  if (!address) throw new Error("contract address is not configured");
-  const c = arcPublicClient();
-  const read = <T>(functionName: (typeof READ_ABI)[number]["name"]) =>
-    c.readContract({ address, abi: READ_ABI, functionName }).then((v) => v as T).catch(() => null);
-  const [balance, owner, oracle, feeRecipient, paused, accrued, claimed, arbiter, maxMarket, maxAccount] = await Promise.all([
-    c.getBalance({ address }),
-    read<Address>("owner"),
-    read<Address>("oracle"),
-    read<Address>("feeRecipient"),
-    read<boolean>("paused"),
-    read<bigint>("lifetimeFeesAccrued"),
-    read<bigint>("lifetimeFeesClaimed"),
-    read<Address>("arbiter"),
-    read<bigint>("maxMarketStake"),
-    read<bigint>("maxAccountStake"),
-  ]);
-  const unclaimedFees = accrued !== null && claimed !== null ? accrued - claimed : null;
+type RealmConfig = MarketConfig & { lifetimeFeesAccrued?: number; lifetimeFeesClaimed?: number };
+
+/** A market realm's roles, caps, fees and what it holds in mUSD (index units). */
+async function realm(kind: "vs" | "pool") {
+  const path = kind === "vs" ? G.realms.vs : G.realms.pool;
+  const address = realmAddress(path);
+  const [c, balance] = await Promise.all([(kind === "vs" ? vsConfig(G) : poolConfig(G)) as Promise<RealmConfig>, musdBalanceWei(address, G)]);
+  const unclaimed = c.lifetimeFeesAccrued !== undefined && c.lifetimeFeesClaimed !== undefined ? fromMusdUnits(c.lifetimeFeesAccrued - c.lifetimeFeesClaimed) : null;
   return {
     address,
+    path,
     balanceWei: balance.toString(),
-    owner,
-    oracle,
-    arbiter,
-    feeRecipient,
-    paused,
-    // Net USDC wei, "0" = no cap; null when the contract has no caps (MimirFees) or the read failed.
-    maxMarketStakeWei: maxMarket?.toString() ?? null,
-    maxAccountStakeWei: maxAccount?.toString() ?? null,
-    unclaimedFeesWei: unclaimedFees?.toString() ?? null,
+    owner: c.owner,
+    oracle: c.oracle,
+    arbiter: c.arbiter,
+    feeRecipient: c.feeRecipient,
+    paused: c.paused,
+    // Net mUSD, index units, "0" = no cap.
+    maxMarketStakeWei: fromMusdUnits(c.maxMarketStake).toString(),
+    maxAccountStakeWei: fromMusdUnits(c.maxAccountStake).toString(),
+    unclaimedFeesWei: unclaimed?.toString() ?? null,
   };
 }
 
 async function balances(wallets: Array<{ label: string; address: string }>) {
-  const c = arcPublicClient();
   return Promise.all(
     wallets.map(async (w) => {
-      const wei = await c.getBalance({ address: w.address as Address }).catch(() => null);
+      const [wei, ugnot] = await Promise.all([musdBalanceWei(w.address, G).catch(() => null), gasBalanceUgnot(w.address, G).catch(() => null)]);
       const usdc = wei === null ? null : Number(wei) / 1e18;
-      return { ...w, usdc, low: usdc !== null && usdc < LOW_USDC };
+      const gnot = ugnot === null ? null : Number(ugnot) / 1e6;
+      return { ...w, usdc, gnot, low: (usdc !== null && usdc < LOW_USDC) || (gnot !== null && gnot < LOW_GNOT) };
     }),
   );
 }
@@ -126,7 +110,8 @@ async function database() {
     telegram: live.length,
     telegramLinked: live.filter((c) => c.wallet != null).length,
     agents: groupBy(agentRows, "status"),
-    agentsArc: agentRows.filter((r) => r.arc_operator != null).length,
+    // Agents with a gno operator set (the field name is the panel's).
+    agentsArc: agentRows.filter((r) => r.gno_operator != null).length,
     agentPayments: { count: payments.length, wei: payments.reduce((n, p) => n + BigInt(String(p.amount_wei ?? "0")), 0n).toString() },
     baskets: basketCount,
     subscribers: new Set(subs.map((r) => r.follower)).size,
@@ -155,9 +140,10 @@ async function telegram() {
 /** Which of the site's own secrets are set (yes/no), never their values. */
 function siteKeys() {
   const names = [
-    "MIMIR_STORE_SECRET", "MIMIR_EVENTS_SECRET", "MIMIR_ADMIN_SECRET", "MIMIR_INTERNAL_SECRET", "TELEGRAM_BOT_TOKEN", "TELEGRAM_WEBHOOK_SECRET", "ARC_FEE_SIGNER_KEY",
+    "MIMIR_STORE_SECRET", "MIMIR_EVENTS_SECRET", "MIMIR_ADMIN_SECRET", "MIMIR_INTERNAL_SECRET", "TELEGRAM_BOT_TOKEN", "TELEGRAM_WEBHOOK_SECRET",
+    "GNO_WALLET_SECRET", "LAUNCH_BYOK_SECRET",
     "GEMINI_API_KEY", "ANTHROPIC_API_KEY", "GROQ_API_KEY", "OPENROUTER_API_KEY", "TYPESAFE_API_KEY", "CMC_API_KEY",
-    "BASE_RPC_URL", "NEXT_PUBLIC_POSTHOG_KEY",
+    "NEXT_PUBLIC_POSTHOG_KEY",
   ];
   return Object.fromEntries(names.map((n) => [n, Boolean(process.env[n]?.trim())]));
 }
@@ -166,14 +152,15 @@ const minutes = (ms: number) => ms / 60_000;
 
 export async function adminOverview() {
   const nowMs = Date.now();
-  const [be, chainHead, v3, pool, db, tg, baseHead] = await Promise.all([
+  const [be, chainHead, v3, pool, db, tg, musd] = await Promise.all([
     probe(backend),
-    probe(() => arcPublicClient().getBlockNumber().then(Number)),
-    probe(() => contract(ARC.contracts.mimirV3)),
-    probe(() => contract(ARC.contracts.mimirPool)),
+    probe(() => latestBlockHeight(G)),
+    probe(() => realm("vs")),
+    probe(() => realm("pool")),
     probe(database),
     probe(telegram),
-    probe(() => createPublicClient({ transport: http(baseRpcUrl(), { timeout: 8_000 }) }).getBlockNumber().then(Number)),
+    // mUSD's total supply: the token realm answers.
+    probe(() => qevalInts(G.realms.musd, "TotalSupply()", G).then(([v]) => Number(v ?? 0n) / 1e6)),
   ]);
 
   const b = be.data;
@@ -187,9 +174,9 @@ export async function adminOverview() {
     : [];
   const walletBalances = await probe(() => balances(wallets));
 
-  // Solvency: what the contract holds against what the index says it owes (stakes in play, unclaimed pool payouts,
-  // dispute bonds) plus fees accrued but not withdrawn. An estimate: parked VS payouts are not in the index.
-  const solvency = (c: Probe<Awaited<ReturnType<typeof contract>>>, owedWei: string | undefined) => {
+  // Solvency: what the realm holds against what the index says it owes (stakes in play, unclaimed pool payouts,
+  // dispute bonds) plus fees accrued but not withdrawn.
+  const solvency = (c: Probe<Awaited<ReturnType<typeof realm>>>, owedWei: string | undefined) => {
     if (!c.data || owedWei === undefined) return null;
     const owed = BigInt(owedWei) + BigInt(c.data.unclaimedFeesWei ?? "0");
     const held = BigInt(c.data.balanceWei);
@@ -198,7 +185,7 @@ export async function adminOverview() {
 
   const lag = b?.cursorBlock != null && chainHead.data != null ? chainHead.data - b.cursorBlock : null;
   // Expected cadence per job (crons.ts); a heartbeat older than 3 periods is stale.
-  const JOBS: Record<string, number> = { "arc-sync": 0.5, "arc-oracle": 2, "arc-council": 15, "arc-creator": 60, "arc-twins": 15 };
+  const JOBS: Record<string, number> = { "gno-sync": 0.5, "gno-oracle": 2, "arc-council": 15, "arc-creator": 60 };
   const jobs = Object.entries(JOBS).map(([name, every]) => {
     const at = b?.heartbeats.find((h) => h.name === name)?.at ?? null;
     const ago = at ? minutes(nowMs - at) : null;
@@ -213,35 +200,36 @@ export async function adminOverview() {
   const status: Array<{ name: string; health: Health; note: string }> = [
     { name: "Backend", health: be.ok ? "ok" : "down", note: be.ok ? `${be.ms} ms` : be.error ?? "" },
     { name: "Indexer", health: lag === null ? "warn" : lag > 600 ? "down" : lag > 120 ? "warn" : "ok", note: lag === null ? "unknown" : `${lag} blocks behind` },
-    ...jobs.filter((j) => j.name !== "arc-sync").map((j) => ({
-      name: j.name.replace("arc-", "").replace(/^./, (c) => c.toUpperCase()),
+    ...jobs.filter((j) => j.name !== "gno-sync").map((j) => ({
+      name: j.name.replace(/^(arc|gno)-/, "").replace(/^./, (c) => c.toUpperCase()),
       health: j.health,
       note: j.lastAt ? `${Math.round(minutes(nowMs - j.lastAt))} min ago` : "no heartbeat yet",
     })),
     { name: "Oracle queue", health: oracleStuck > 0 ? "warn" : "ok", note: `${b?.oracle.waiting ?? "?"} waiting · ${oracleStuck} retried 5+ times` },
-    { name: "Arc RPC", health: chainHead.ok ? "ok" : "down", note: chainHead.ok ? `block ${chainHead.data}` : chainHead.error ?? "" },
-    { name: "Base RPC", health: baseHead.ok ? "ok" : "warn", note: baseHead.ok ? `block ${baseHead.data}` : baseHead.error ?? "" },
+    { name: "gno.land RPC", health: chainHead.ok ? "ok" : "down", note: chainHead.ok ? `block ${chainHead.data}` : chainHead.error ?? "" },
+    { name: "mUSD realm", health: musd.ok ? "ok" : "warn", note: musd.ok ? `${musd.data?.toLocaleString("en-US")} mUSD supply` : musd.error ?? "" },
     { name: "Database", health: db.ok ? "ok" : "down", note: db.ok ? `${db.ms} ms` : db.error ?? "" },
     { name: "Telegram", health: tg.ok ? (tg.data?.lastError ? "warn" : "ok") : "down", note: tg.ok ? (tg.data?.webhook ? "webhook" : "polling") : tg.error ?? "" },
-    { name: "Wallets", health: !walletBalances.ok ? "warn" : lowWallets ? "warn" : "ok", note: lowWallets ? `${lowWallets} below ${LOW_USDC} USDC` : "funded" },
+    { name: "Wallets", health: !walletBalances.ok ? "warn" : lowWallets ? "warn" : "ok", note: lowWallets ? `${lowWallets} below ${LOW_USDC} mUSD or ${LOW_GNOT} GNOT` : "funded" },
     {
       name: "Solvency",
       health: !v3Solvent || !poolSolvent ? "warn" : v3Solvent.ok && poolSolvent.ok ? "ok" : "down",
-      note: !v3Solvent || !poolSolvent ? "unknown" : v3Solvent.ok && poolSolvent.ok ? "contracts cover what they owe" : "a contract holds less than it owes",
+      note: !v3Solvent || !poolSolvent ? "unknown" : v3Solvent.ok && poolSolvent.ok ? "realms cover what they owe" : "a realm holds less than it owes",
     },
   ];
 
   return {
     at: nowMs,
-    network: ARC.network,
-    explorer: ARC.chain.explorer,
+    network: CHAIN.chainId,
+    explorer: CHAIN.explorer,
     status,
     jobs,
     backend: be,
     chain: { head: chainHead, v3, pool, solvency: { vs: v3Solvent, pool: poolSolvent }, wallets: walletBalances },
     database: db,
     telegram: tg,
-    base: { head: baseHead },
+    /** The mUSD realm probe (the panel's second network row). */
+    base: { head: musd },
     siteKeys: siteKeys(),
   };
 }

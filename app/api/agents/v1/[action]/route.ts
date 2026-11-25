@@ -256,7 +256,7 @@ async function handleRegister(env: AgentEnvelope): Promise<Handled> {
   const operatorOk = await verifyWalletSignature({
     address: operatorWallet,
     message: operatorProofMessage(env.agentId, operatorWallet),
-    signature: str(env.body, "operatorSignature", 128),
+    signature: str(env.body, "operatorSignature", 16_384),
   });
   if (!operatorOk) {
     throw new AgentEnvelopeError("operator proof does not match", 401, "bad_operator_proof");
@@ -430,7 +430,7 @@ async function handleAuthenticated(env: AgentEnvelope, authorization: string | n
       const proofOk = await verifyWalletSignature({
         address: next,
         message: operatorProofMessage(agent.agentId, next),
-        signature: str(env.body, "operatorSignature", 128),
+        signature: str(env.body, "operatorSignature", 16_384),
       });
       if (!proofOk) {
         throw new AgentEnvelopeError("operator proof does not match", 401, "bad_operator_proof");

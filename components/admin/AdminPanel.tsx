@@ -173,7 +173,7 @@ function Dashboard({ d, error, token }: { d: AdminOverview; error: string | null
           <Stat label="New in 24 h" value={b.markets.createdLast24h} />
           <Stat label="Volume (mUSD)" value={b.markets.volumeUsd.toLocaleString("en-US", { maximumFractionDigits: 2 })} />
           <Stat label="Fees (mUSD)" value={usdc(b.markets.feesWei)} />
-          <Stat label="Accounts staking" value={b.people.arcAccounts} />
+          <Stat label="Accounts staking" value={b.people.accounts} />
           <Stat label="People (not ours)" value={b.people.nonHouse} />
           <Stat label="Oracle verdicts" value={b.oracle.verdicts} />
         </section>
@@ -257,7 +257,7 @@ function Dashboard({ d, error, token }: { d: AdminOverview; error: string | null
         <Card title="On gno.land" note="backend index">
           {b ? (
             <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-              <Stat label="Accounts that staked" value={b.people.arcAccounts} />
+              <Stat label="Accounts that staked" value={b.people.accounts} />
               <Stat label="Of them, not ours" value={b.people.nonHouse} />
               <Stat label="Positions" value={b.people.positions} />
               <Stat label="Council takes" value={`${b.council.takes} (${b.council.takesLast24h} in 24 h)`} />
@@ -312,7 +312,7 @@ function Dashboard({ d, error, token }: { d: AdminOverview; error: string | null
               ["Backend", d.backend.ok ? "up" : "down", d.backend.ok ? `${d.backend.ms} ms` : d.backend.error],
               ["App records", d.database.ok ? "up" : "down", d.database.ok ? `${d.database.ms} ms` : d.database.error],
               ["gno.land RPC", d.chain.head.ok ? "up" : "down", d.chain.head.ok ? `block ${d.chain.head.data} · ${d.chain.head.ms} ms` : d.chain.head.error],
-              ["Backup RPC", d.base.head.ok ? "up" : "down", d.base.head.ok ? `block ${d.base.head.data}` : d.base.head.error],
+              ["mUSD realm", d.base.head.ok ? "up" : "down", d.base.head.ok ? `${d.base.head.data} mUSD supply` : d.base.head.error],
               ["Telegram", d.telegram.ok ? d.telegram.data?.bot : "down", d.telegram.ok ? `${d.telegram.data?.webhook ? "webhook" : "polling"} · ${d.telegram.data?.pending} pending${d.telegram.data?.lastError ? ` · ${d.telegram.data.lastError}` : ""}` : d.telegram.error],
             ]}
           />

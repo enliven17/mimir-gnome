@@ -2,8 +2,7 @@
 // heartbeats and which settings and keys are present. Read-only. Callable only with the admin secret (MIMIR_ADMIN_SECRET), which the
 // site's admin route holds; key values never leave this function, only whether they are set (and how many).
 import { secretMatches } from "../lib/internal-secrets";
-import { oracleKey } from "../lib/chains/house";
-import { privateKeyToAccount } from "viem/accounts";
+import { councilWallets, houseCreatorWallet, oracleAddress as oracleAddressOf } from "../lib/chains/house";
 import { v } from "convex/values";
 import { internalMutation, query } from "./_generated/server";
 
@@ -21,14 +20,8 @@ const DISPUTE_BOND = 2n * 10n ** 18n;
 const FINAL = new Set(["resolved", "cancelled"]);
 const keyCount = (name: string) => (process.env[name] ?? "").split(/[,\s]+/).filter(Boolean).length;
 const flag = (name: string) => process.env[name]?.trim() ?? null;
-
-function jsonEnv<T>(name: string): T | null {
-  try {
-    return JSON.parse(process.env[name] ?? "null") as T | null;
-  } catch {
-    return null;
-  }
-}
+/** Mnemonics and JSON maps of them: set or not, never how many words. */
+const present = (name: string) => (process.env[name]?.trim() ? 1 : 0);
 
 export const overview = query({
   args: { secret: v.string() },
@@ -39,7 +32,7 @@ export const overview = query({
     // Every read is bounded (Convex caps one query at ~16k documents): the newest rows of each table, with `capped`
     // telling the panel when a total is a lower bound. Fees come from FeeAccrued events only (by_name index).
     const CAP = { markets: 3000, positions: 4000, fees: 3000, verdicts: 1000, tries: 300, takes: 1000, decisions: 1000 };
-    const [markets, positions, events, verdicts, tries, takes, decisions, heartbeats, cursor, baseCursor] = await Promise.all([
+    const [markets, positions, events, verdicts, tries, takes, decisions, heartbeats, cursor] = await Promise.all([
       ctx.db.query("arcMarkets").order("desc").take(CAP.markets),
       ctx.db.query("arcPositions").order("desc").take(CAP.positions),
       ctx.db.query("arcEvents").withIndex("by_name", (q) => q.eq("name", "FeeAccrued")).order("desc").take(CAP.fees),
@@ -48,8 +41,7 @@ export const overview = query({
       ctx.db.query("arcMarketTakes").order("desc").take(CAP.takes),
       ctx.db.query("arcCouncilDecisions").order("desc").take(CAP.decisions),
       ctx.db.query("arcHeartbeats").take(50),
-      ctx.db.query("arcCursor").withIndex("by_name", (q) => q.eq("name", "arc")).unique(),
-      ctx.db.query("arcCursor").withIndex("by_name", (q) => q.eq("name", "base")).unique(),
+      ctx.db.query("arcCursor").withIndex("by_name", (q) => q.eq("name", "gno")).unique(),
     ]);
     const capped = {
       markets: markets.length >= CAP.markets,
@@ -59,19 +51,14 @@ export const overview = query({
       takes: takes.length >= CAP.takes,
     };
 
-    const creatorWallet = jsonEnv<{ address?: string }>("ARC_CREATOR_WALLET");
-    const house = creatorWallet?.address?.toLowerCase() ?? null;
-    const baseHouse = jsonEnv<{ address?: string }>("BASE_CREATOR_WALLET")?.address?.toLowerCase() ?? null;
-    const isHouse = (a: string) => a.toLowerCase() === house || a.toLowerCase() === baseHouse;
-    const council = Object.entries(jsonEnv<Record<string, { address: string }>>("ARC_COUNCIL_WALLETS") ?? {}).map(([slug, w]) => ({ slug, address: w.address.toLowerCase() }));
-    const baseCouncil = Object.entries(jsonEnv<Record<string, { address: string }>>("BASE_COUNCIL_WALLETS") ?? {}).map(([slug, w]) => ({ slug, address: w.address.toLowerCase() }));
-    const councilSet = new Set([...council, ...baseCouncil].map((c) => c.address));
-    const signer = oracleKey();
-    const oracleAddress = signer ? privateKeyToAccount(signer).address : null;
+    const house = houseCreatorWallet()?.address ?? null;
+    const isHouse = (a: string) => a.toLowerCase() === house;
+    const council = Object.entries(councilWallets()).map(([slug, w]) => ({ slug, address: w.address }));
+    const councilSet = new Set(council.map((c) => c.address));
+    const oracleAddress = oracleAddressOf();
 
-    // Market ids repeat across chains: every key names the chain (a row without one is Arc's).
-    type Keyed = { chain?: "arc" | "base"; kind: string; marketId: number };
-    const key = (r: Keyed) => `${r.chain ?? "arc"}:${r.kind}:${r.marketId}`;
+    type Keyed = { chain?: "gno"; kind: string; marketId: number };
+    const key = (r: Keyed) => `${r.chain ?? "gno"}:${r.kind}:${r.marketId}`;
     const byKey = new Map(markets.map((m) => [key(m), m]));
     const posByMarket = new Map<string, typeof positions>();
     for (const p of positions) {
@@ -104,7 +91,7 @@ export const overview = query({
     const verdictOf = new Map(verdicts.map((x) => [key(x), x]));
     const takeOf = new Map(takes.map((t) => [key(t), t]));
     const row = (m: (typeof markets)[number]) => ({
-      chain: m.chain ?? "arc",
+      chain: m.chain ?? "gno",
       kind: m.kind,
       marketId: m.marketId,
       question: m.question,
@@ -134,7 +121,7 @@ export const overview = query({
     const queue = tries
       .map((t) => {
         const m = byKey.get(key(t));
-        return { chain: t.chain ?? "arc", kind: t.kind, marketId: t.marketId, attempts: t.attempts, notBefore: t.notBefore, lastError: t.lastError?.slice(0, 300) ?? null, question: m?.question ?? "", status: m?.status ?? null };
+        return { chain: t.chain ?? "gno", kind: t.kind, marketId: t.marketId, attempts: t.attempts, notBefore: t.notBefore, lastError: t.lastError?.slice(0, 300) ?? null, question: m?.question ?? "", status: m?.status ?? null };
       })
       .filter((t) => t.status !== "resolved" && t.status !== "cancelled");
     // Past the deadline and waiting on the oracle (VS needs a challenger to be decided; a pool needs nothing).
@@ -151,7 +138,6 @@ export const overview = query({
       now,
       capped,
       cursorBlock: cursor?.block ?? null,
-      baseCursorBlock: baseCursor?.block ?? null,
       heartbeats: heartbeats.filter((h) => !h.name.endsWith("-poke")).map((h) => ({ name: h.name, at: h.at })),
       markets: {
         total: markets.length,
@@ -169,7 +155,7 @@ export const overview = query({
       },
       oracle: { address: oracleAddress, verdicts: verdicts.length, waiting, deferred: queue },
       council: { wallets: council, takes: takes.length, takesLast24h: takes.filter((t) => t.at > dayAgo).length, decisions: decisionCounts },
-      people: { arcAccounts: users.size, nonHouse: people.length, positions: positions.length },
+      people: { accounts: users.size, nonHouse: people.length, positions: positions.length },
       owedWei: { vs: owed.vs.toString(), pool: owed.pool.toString() },
       house,
       settings: {
@@ -182,13 +168,14 @@ export const overview = query({
         TELEGRAM_EVENTS_URL: process.env.TELEGRAM_EVENTS_URL ? "set" : null,
       },
       // Presence only: how many keys each variable holds, never the values.
-      keys: Object.fromEntries(
-        [
+      keys: Object.fromEntries([
+        ...[
           "ORACLE_GEMINI_API_KEY", "ORACLE_ANTHROPIC_API_KEY", "GEMINI_API_KEY", "GEMINI_API_KEYS", "COUNCIL_GEMINI_API_KEY",
           "CREATOR_GEMINI_API_KEY", "ANTHROPIC_API_KEY", "GROQ_API_KEY", "GROQ_API_KEYS", "OPENROUTER_API_KEY", "OPENROUTER_API_KEYS", "TYPESAFE_API_KEY",
-          "ORACLE_KEY", "ARC_ORACLE_KEY", "BASE_ORACLE_KEY", "CIRCLE_API_KEY", "CIRCLE_ENTITY_SECRET", "MIMIR_STORE_SECRET", "MIMIR_EVENTS_SECRET", "MIMIR_ADMIN_SECRET", "MIMIR_INTERNAL_SECRET",
-        ].map((k) => [k, keyCount(k)]),
-      ),
+          "MIMIR_STORE_SECRET", "MIMIR_EVENTS_SECRET", "MIMIR_ADMIN_SECRET", "MIMIR_INTERNAL_SECRET",
+        ].map((k) => [k, keyCount(k)] as const),
+        ...["ORACLE_MNEMONIC", "GNO_CREATOR_MNEMONIC", "GNO_COUNCIL_MNEMONICS", "AUDIT_AGENT_MNEMONIC", "GNO_WALLET_SECRET"].map((k) => [k, present(k)] as const),
+      ]),
     };
   },
 });
