@@ -1,16 +1,15 @@
 /**
- * Mimir API (lib/launch/paid-call.ts): call a launched agent from any app, paying the agent's own wallet.
- * GET  /api/launch/:id/call                      the price and where to pay, per chain.
+ * Mimir API (lib/launch/paid-call.ts): call a launched agent from any app, paying the agent's own gno.land account.
+ * GET  /api/launch/:id/call                      the price and where to pay (r/agentpay), with a fresh secret.
  * POST /api/launch/:id/call { prompt }           without a payment: 402 with the same quote.
- *      header X-Mimir-Payment: <chain>:<tx>:<secret>   with one: the agent's answer. One tx buys one call.
+ *      header X-Mimir-Payment: gno:<tx>:<secret> with one: the agent's answer. One tx buys one call.
  */
 import { z } from "zod";
 
 import { api } from "@/convex/_generated/api";
-import { builderSuffixFromEnv } from "@/lib/base/builder-code";
 import { MARKET_CHAINS } from "@/lib/chains/registry";
 import { COUNCIL_AGENTS } from "@/lib/launch/council-view";
-import { arcAgentPay, baseAgentPay, callPriceUsd, newAgentCall, PAY_HEADER, parsePayment, quote } from "@/lib/launch/paid-call";
+import { callPriceUsd, PAY_HEADER, parsePayment, quote } from "@/lib/launch/paid-call";
 import { launchCx } from "@/lib/launch/request";
 import { readLimitedJson } from "@/lib/server/body-limit";
 import { allowRequest, clientIp } from "@/lib/server/rate-limit";
@@ -25,6 +24,7 @@ const CORS = {
   "cache-control": "no-store",
 };
 const json = (body: unknown, status = 200) => Response.json(body, { status, headers: CORS });
+const chainCfg = () => MARKET_CHAINS.chains.gno;
 
 export const OPTIONS = () => new Response(null, { status: 204, headers: CORS });
 
@@ -34,15 +34,12 @@ async function offer(id: string) {
   const w = (await c.client.query(api.agentApiDb.wallets, { secret: c.secret, slug: id })) ?? (Object.hasOwn(COUNCIL_AGENTS, id) ? COUNCIL_AGENTS[id] : null);
   if (!w) return { res: json({ error: "No such live agent." }, 404) };
   const usd = callPriceUsd();
-  const payContract = MARKET_CHAINS.chains.base.enabled && MARKET_CHAINS.chains.base.network === "mainnet" ? baseAgentPay() : null;
-  const arcPayContract = MARKET_CHAINS.chains.arc.enabled && MARKET_CHAINS.chains.arc.network === "mainnet" ? arcAgentPay() : null;
   return {
     c,
     quote: {
       agent: id, name: w.name, ticker: w.ticker, priceUsd: usd,
-      // Base: its Base wallet, or else its Arc wallet (the same address); paid through MimirAgentPay with a fresh callId.
-      accepts: quote(usd, { arc: w.arc, base: (w.base && typeof w.base === "object" ? w.base.address : w.base) ?? w.arc }, payContract ? { contract: payContract, ...newAgentCall(), dataSuffix: builderSuffixFromEnv(process.env.BASE_BUILDER_CODE) } : null, arcPayContract ? { contract: arcPayContract, ...newAgentCall() } : null),
-      howTo: `Approve ERC-20 USDC (6 decimals) to the selected chain's payTo contract, then call pay(agent, units, callId) on it (Base also supports payWithPermit). Do not send a plain transfer. Keep the quote's secret private and POST { "prompt": "..." } with header ${PAY_HEADER}: <chain>:<tx>:<secret>. One tx buys one call; call within an hour of payment.`,
+      accepts: chainCfg().enabled ? quote(usd, w.gno, undefined, chainCfg().gno) : [],
+      howTo: `In ONE transaction on ${chainCfg().name} (chain id ${chainCfg().chainId}): Approve mUSD (6 decimals) to the payTo realm's address for exactly units, then call Pay(agent, units, callId) on payTo. Do not send a plain transfer. Keep the quote's secret private and POST { "prompt": "..." } with header ${PAY_HEADER}: gno:<tx hash>:<secret>. One tx buys one call; call within an hour of payment.`,
     },
   };
 }
@@ -64,11 +61,11 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
   if (!pay) {
     const o = await offer(id);
     if (o.res) return o.res;
-    return json({ error: header ? `Bad ${PAY_HEADER} header: use arc:<tx>:<secret> or base:<tx>:<secret>.` : "Payment required.", ...o.quote }, 402);
+    return json({ error: header ? `Bad ${PAY_HEADER} header: use gno:<tx>:<secret>.` : "Payment required.", ...o.quote }, 402);
   }
   const c = launchCx();
   if (!c) return json({ error: "Mimir API is not configured on this server." }, 503);
-  if (!MARKET_CHAINS.chains[pay.chain].enabled || MARKET_CHAINS.chains[pay.chain].network !== "mainnet") return json({ error: "Paid calls on this network are currently disabled." }, 503);
-  const r = await c.client.action(api.agentApi.call, { secret: c.secret, slug: id, prompt: body.data.prompt, chain: pay.chain, tx: pay.tx, ...(pay.secret ? { callSecret: pay.secret } : {}) });
+  if (!chainCfg().enabled) return json({ error: "Paid calls on this network are currently disabled." }, 503);
+  const r = await c.client.action(api.agentApi.call, { secret: c.secret, slug: id, prompt: body.data.prompt, chain: "gno", tx: pay.tx, callSecret: pay.secret });
   return r.ok ? json({ agent: r.agent, answer: r.answer, paid: { chain: r.chain, tx: r.tx } }) : json({ error: r.error }, r.status);
 }

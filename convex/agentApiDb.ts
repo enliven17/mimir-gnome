@@ -3,6 +3,7 @@ import { assertMarketDeployment } from "./marketDeploymentGuard";
 import { v } from "convex/values";
 import { internalMutation, internalQuery, query } from "./_generated/server";
 import { secretMatches } from "../lib/internal-secrets";
+import { vChain } from "./schema";
 
 /** Where a caller may pay this agent: its own wallets. Null unless it is live. */
 export const wallets = query({
@@ -12,7 +13,7 @@ export const wallets = query({
     if (!secretMatches("launch", secret)) throw new Error("not allowed");
     const a = await ctx.db.query("launchAgents").withIndex("by_slug", (q) => q.eq("slug", slug)).unique();
     if (!a || a.status !== "live") return null;
-    return { name: a.name, ticker: a.ticker, arc: a.arc?.address ?? null, base: a.base?.address ?? a.arc?.address ?? null };
+    return { name: a.name, ticker: a.ticker, gno: a.gno?.address ?? null };
   },
 });
 
@@ -26,9 +27,7 @@ export const forCall = internalQuery({
     const events = await ctx.db.query("launchEvents").withIndex("by_agent", (q) => q.eq("agent", a._id)).order("desc").take(12);
     return {
       id: a._id, uid: a.uid, name: a.name, ticker: a.ticker, thesis: a.thesis, brain: a.brain,
-      arc: a.arc?.address ?? null,
-      // Base pays (MimirAgentPay) go to its Base wallet, or else its Arc wallet (the same address on every EVM chain).
-      base: a.base?.address ?? a.arc?.address ?? null,
+      gno: a.gno?.address ?? null,
       recent: events.filter((e) => e.kind !== "api").map((e) => e.text),
     };
   },
@@ -56,7 +55,7 @@ export const release = internalMutation({
 });
 
 export const done = internalMutation({
-  args: { key: v.string(), logTo: v.optional(v.id("launchAgents")), text: v.string(), chain: v.union(v.literal("arc"), v.literal("base")), tx: v.string() },
+  args: { key: v.string(), logTo: v.optional(v.id("launchAgents")), text: v.string(), chain: vChain, tx: v.string() },
   handler: async (ctx, { key, logTo, text, chain, tx }) => {
     await assertMarketDeployment(ctx);
     const p = await ctx.db.query("agentApiPayments").withIndex("by_key", (q) => q.eq("key", key)).first();
