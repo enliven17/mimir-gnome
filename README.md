@@ -1,130 +1,145 @@
-# Mimir
+# Mimir on gno.land
 
 **Don't argue. Settle.** Mimir turns any question with a deadline and a source into a market. People and AI agents
-stake USDC on it, and an AI oracle settles it in the open, with its reasoning published and hashed on chain.
+stake mUSD on it, and an AI oracle settles it in the open: the verdict, its confidence and the hash of its evidence
+are written to the chain, anyone in the market can dispute it, and a draw or an unclear question refunds everyone.
 
-- **Connect any EVM wallet.** Your address is your account on every network; every transaction is signed by you.
-- **Markets run on Base**, with Circle's USDC (gas in ETH), **and on Arc**, Circle's stablecoin chain (USDC pays the
-  gas too). Each network has its own contracts and its own pools; pick either and stake there. Every public pool
-  exists on both: Mimir's agents open theirs on both, and when you open a pool on one network Mimir opens its twin on
-  the other (seeded with the minimum stake on your side) and links them. One oracle decision settles both.
-  VS duels are personal challenges and stay on the network they were opened on.
-- **An AI oracle** (one key, the same address on every network) reads the market's source, checks prices against two feeds, and proposes a result. Anyone in the
-  market can dispute it. When it cannot be sure, everyone gets their money back.
-- **A council of twenty AI personas** writes a forecast under every market.
-- **Bring your own agent:** an API that returns unsigned transactions, so Mimir never holds an agent's key.
-- **Hosted agents (Mimir Launch):** free to create. An agent stakes on markets from its own wallet on your rules. Its
-  own token is optional: you launch it on Argus or Clanker from your wallet and keep every creator fee.
-- **Copy trading and baskets:** follow agents you trust; when a copy wins, 1% of the profit goes to whoever built the
-  agent or basket.
+This repository is Mimir rebuilt on gno.land. Every market rule lives in Gno realms; the web app, the oracle, the
+AI council and the agent API read and write those realms.
 
-The current rollout at [mimirmarkets.xyz](https://mimirmarkets.xyz) uses **Base Sepolia only**. Arc is dormant and can be re-enabled after its configuration is ready. See [the Base testnet runbook](docs/BASE-TESTNET.md) for deployed contracts, verification and reactivation steps. Mainnet deployment comes after testnet acceptance. Telegram:
-[t.me/mimirmarkets](https://t.me/mimirmarkets).
+## Live on the gno.land testnet
 
-## How it works
+Chain `onyx-1`, RPC `https://rpc.onyx.testnets.gno.land:443`. Every realm renders its state in gnoweb.
 
-1. **Open a market:** a question, two sides, a deadline and the source that will decide it. You stake on one side.
-   Two kinds: **VS** (challengers take the other side together, up to 5× your stake) and **pool** (anyone stakes
-   on either side).
-2. **Stake:** every position pays a 0.5% entry fee. Minimum 0.1 USDC.
-   Betting closes 60 seconds before the deadline.
-3. **Settle:** the oracle proposes a result. During the dispute window any participant can dispute with a 2 USDC
-   bond. Late deposits receive their net principal back; earlier valid stakes still settle. Then the result is final and winners are paid. Draws and unresolvable questions refund everyone; seven days
-   after the deadline anyone can refund a market that never settled.
+| Package | Path | What it is |
+|---|---|---|
+| mUSD | [`gno.land/r/g12dcs…6tcz/musd`](https://onyx.testnets.gno.land/r/g12dcsmwccgdxasqde2eumua88tlrkw83kqf6tcz/musd) | GRC20 test dollar, 6 decimals, with a faucet: 1,000 mUSD per address per day |
+| Pools | [`gno.land/r/g12dcs…6tcz/pool`](https://onyx.testnets.gno.land/r/g12dcsmwccgdxasqde2eumua88tlrkw83kqf6tcz/pool) | Two-sided markets: anyone stakes on either side, winners split the losing side pro rata |
+| VS | [`gno.land/r/g12dcs…6tcz/vs`](https://onyx.testnets.gno.land/r/g12dcsmwccgdxasqde2eumua88tlrkw83kqf6tcz/vs) | Duels: a creator takes a position, challengers take the other side, pool or fixed odds, private invites |
+| Fees | [`gno.land/r/g12dcs…6tcz/fees`](https://onyx.testnets.gno.land/r/g12dcsmwccgdxasqde2eumua88tlrkw83kqf6tcz/fees) | The entry fee per account: 0.5%, lower with an ed25519-signed ticket |
+| Agent pay | [`gno.land/r/g12dcs…6tcz/agentpay`](https://onyx.testnets.gno.land/r/g12dcsmwccgdxasqde2eumua88tlrkw83kqf6tcz/agentpay) | Pays an agent for one API call, payer to agent, no custody |
+| Library | `gno.land/p/g12dcs…6tcz/mimir` | Stake checkpoints, overflow-safe math, roles and timelocks, JSON and markdown helpers |
 
-The full picture: [docs/how-mimir-works.md](docs/how-mimir-works.md). Every doc: [docs/README.md](docs/README.md).
+The full namespace is `g12dcsmwccgdxasqde2eumua88tlrkw83kqf6tcz`. onyx-1 runs the `inert` code-submission policy: a
+package becomes callable once the chain's package approver enables it.
 
-Mimir's fee is the 0.5% entry fee on stakes and its share of baskets and copy trades. Nothing else: an agent's token
-fees go to its owner. Release history: [docs/releases/](docs/releases/).
+## Use it
+
+1. Install [Adena](https://adena.app) and switch it to the gno.land testnet (the app adds `onyx-1` if it is missing).
+2. Get GNOT for gas from the [faucet](https://faucet.gno.land).
+3. Get mUSD: the **Get mUSD** button in the app, or call `Faucet` on the mUSD realm from gnoweb.
+4. Open a market, stake, dispute or claim. Each action is one transaction: when the realm needs your mUSD, the app
+   puts the exact `Approve` and the call in the same transaction.
+
+Everything also works without the app. Each market page in gnoweb links to the realm's functions (`$help`), so a market
+can be staked, disputed, finalized and claimed from gnoweb or with `gnokey maketx call`.
+
+## How a market works
+
+1. **Open.** A question, two sides, a deadline and the source that will decide it. The creator stakes on one side.
+   Pools: anyone stakes on either side; stakes add up per side. VS: challengers each join once, up to 100, and together
+   put in at most 5 times the creator's stake (pool odds), or are paid a fixed multiple the creator's stake must cover
+   (fixed odds, 2x by default, up to 10x).
+2. **Stake.** Every stake pays an entry fee (0.5%, kept on refunds); the rest is at risk. Minimum 0.1 mUSD. Staking
+   closes 60 seconds before the deadline, or earlier if the creator sets a lock.
+3. **Propose.** After the deadline the oracle proposes A, B, a draw or "unresolvable", with a summary and the sha256 of
+   its evidence. It may set a settlement cutoff: stakes placed after it get their principal back and share nothing.
+4. **Dispute.** For 10 minutes on testnet (a day on mainnet) anyone in the market can dispute by posting a 2 mUSD bond.
+   The arbiter rules; the bond comes back if the ruling changes the result and goes to the platform otherwise.
+5. **Settle.** Anyone finalizes an undisputed proposal. Pool winners claim their stake plus a pro-rata share of the
+   losing side; VS settles every participant in the same transaction. Draws, unresolvable questions and one-sided
+   markets refund every stake.
+6. **Escape hatch.** Seven days after the deadline, proposal or dispute, anyone can refund a market nobody settled.
+
+Copy trades pay 1% of their profit to the agent or basket they copied and 1% to the platform. Nothing else is charged
+on winnings.
+
+Safety rules carried over from the EVM contracts: the oracle can never also be the owner, the arbiter or the fee
+recipient; ownership, oracle and fee-recipient changes wait two days and anyone executes them once due; the owner can
+revoke the oracle at once, veto a proposal to the arbiter, cap stakes and pause; pause stops new stakes, settlement and
+winners' payouts but never refunds.
+
+## Architecture
+
+```mermaid
+flowchart LR
+    U[Adena wallet] -->|MsgCall: approve + action| R[Realms: pool, vs, musd, fees, agentpay]
+    A[Agents] -->|unsigned MsgCalls from the agent API| R
+    R -->|JSON views, block events| I[Indexer: Convex]
+    I --> W[Web app]
+    I --> O[AI oracle]
+    O -->|ResolveWithCutoff, Finalize| R
+    C[AI council] -->|stakes from its own keys| R
+    G[gnoweb] -->|Render| R
+```
+
+- **Realms** (`gno/`): the only place money moves. They expose crossing functions for every action and read-only
+  JSON views (`MarketsJSON`, `ClaimJSON`, `PositionJSON`, `ConfigJSON`, ...) that the app, the indexer and agents read
+  with `vm/qeval`. `Render` gives every market a gnoweb page.
+- **Web app** (`app/`, `components/`): Next.js. Reads the realms through `lib/gno/reads.ts`, sends transactions through
+  Adena (`lib/gno/adena.ts`), proves wallet ownership with Adena `SignArbitrary`.
+- **Backend** (`convex/`): indexes the realms from their JSON views and block events, runs the oracle
+  (`convex/arcOracle.ts`), the market creator and the twenty-persona council. Server keys are BIP-39 mnemonics signed
+  with gno-js-client (`lib/gno/signer.ts`); hosted agent wallets are sealed with AES-256-GCM.
+- **Agents** (`lib/agents/`, `examples/gno-agent/`): the agent API returns unsigned `MsgCall`s; the agent signs them
+  itself, so Mimir never holds an agent's key. Paid API calls settle through `r/agentpay`.
 
 ## Repository
 
 | Path | What |
 |---|---|
-| `app/` | Next.js app: pages and API routes (agent API, account links, Telegram, access) |
-| `components/` | UI; `components/arc/` is the wallet, arena, market pages and dashboard (every chain; the name is historical) |
-| `lib/` | Shared code: `lib/chains/` (the chain registry, amounts, transactions, linked markets), `lib/arc/` (Arc config, quotes, fees), `lib/agents/` (agent API), `lib/server/` (the app's records, Circle wallets, Telegram) |
-| `convex/` | The backend: one indexer per chain, the oracle, council and market-creator jobs and their tables |
-| `contracts/` | Solidity: `MimirV3` (VS), `MimirPool` (pools) for Arc, `MimirV3Erc20` / `MimirPoolErc20` for Base, `MimirFees` (entry-fee rate), with Foundry tests |
-| `agents/` | Oracle decision logic, council personas and prompts, market-creator drafting |
-| `cli/` | `mimir-terminal` (npm): the Mimir CLI, live gno.land markets (mUSD) and agents on your own AI; install steps at `/terminal` |
-| `examples/gno-agent/` | A runnable bring-your-own-agent example (gno-js-client) |
-| `schemas/` | The agent API's envelope JSON schema |
-| `brand/` | Logo, colour, type and the brand kit |
-| `scripts/gno/` | Deploy the Gno packages and realms with gnokey (`deploy.sh`) |
-| `scripts/gno-wallets.ts` | Generate (and optionally fund) the council, house-creator and oracle gno.land keys as env lines |
-| `tests/node/` | Unit tests (`npm run test:smoke`) |
+| `gno/p/mimir` | Shared Gno package: stake history, `MulDiv`, `Roles`, JSON and markdown helpers |
+| `gno/r/{musd,fees,pool,vs,agentpay}` | The realms, each with its tests |
+| `lib/gno/` | TypeScript client: config, RPC queries, messages, reads, Adena, server signer, payments |
+| `app/`, `components/` | The web app |
+| `convex/` | Indexer, oracle, council, market creator, app records |
+| `agents/` | Oracle decision logic, council personas, market drafting, the audit agent |
+| `cli/` | `mimir-terminal`: markets and agents from the terminal |
+| `examples/gno-agent/` | A runnable bring-your-own-agent example |
+| `scripts/gno/deploy.sh` | Deploys the packages in dependency order with gnokey |
+| `scripts/gno-wallets.ts` | Generates the oracle, house and council keys as env lines |
+| `tests/node/` | TypeScript unit tests |
 
-## Local development
+## Develop
 
-Needs Node 22+, and Foundry for the contracts.
+Realms (Gno toolchain from [gnolang/gno](https://github.com/gnolang/gno), `chain/mainnet` branch):
+
+```sh
+cd gno
+gno test ./p/... ./r/...        # payouts, disputes, cutoffs, refunds, pause, roles, invites, fee tickets
+gno lint ./r/...
+```
+
+Deploy (the key must be the namespace's deployer address):
+
+```sh
+KEY=mimir-deployer CHAIN_ID=onyx-1 REMOTE=https://rpc.onyx.testnets.gno.land:443 scripts/gno/deploy.sh
+```
+
+App (Node 22+):
 
 ```sh
 npm install
-cp .env.example .env.local          # then fill in what you need (below)
-
-npx convex dev                      # the backend: pushes convex/, runs the jobs, and keeps the app's records
-# in .env.local: NEXT_PUBLIC_CONVEX_URL (printed by convex dev) and MIMIR_INTERNAL_SECRET (16+ chars, the same value
-# set on the backend with `npx convex env set MIMIR_INTERNAL_SECRET ...`): the site reaches the app's records with it
-npm run dev                         # the site on http://localhost:3000
+cp .env.example .env.local      # gno network, Convex URL, keys: every variable is documented there
+npx convex dev                  # backend
+npm run dev                     # http://localhost:3000
+npm run typecheck && npm run test:smoke
 ```
-
-Checks:
-
-```sh
-npm run test:smoke                  # unit tests
-npm run typecheck
-forge test                          # contracts
-MIMIR_URL=http://localhost:3000 node examples/gno-agent/agent.mjs   # an agent registers and challenges a market
-```
-
-## Configuration
-
-Every variable is in [`.env.example`](.env.example), grouped and commented. A chain is on when both its market
-contracts are set; nothing breaks without them. The ones that matter:
-
-| Group | Variables |
-|---|---|
-| Chains | `NEXT_PUBLIC_MARKET_CHAINS` (default `base,arc`), `NEXT_PUBLIC_DEFAULT_MARKET_CHAIN` (default `base`); backend `MARKET_CHAINS` |
-| Base | `NEXT_PUBLIC_BASE_NETWORK` (`testnet` = Sepolia / `mainnet`), `NEXT_PUBLIC_BASE_RPC`, `NEXT_PUBLIC_MIMIR_BASE_V3_ADDRESS`, `NEXT_PUBLIC_MIMIR_BASE_POOL_ADDRESS`, `NEXT_PUBLIC_MIMIR_BASE_FEES_ADDRESS`, `NEXT_PUBLIC_MIMIR_BASE_FROM_BLOCK`, `NEXT_PUBLIC_MIMIR_BASE_MIN_STAKE`; backend `BASE_NETWORK`, `BASE_RPC`, `MIMIR_BASE_*`, `BASE_CREATOR_WALLET`, `BASE_COUNCIL_WALLETS` |
-| Arc | `NEXT_PUBLIC_ARC_NETWORK` (`testnet`/`mainnet`), `NEXT_PUBLIC_ARC_RPC`, `NEXT_PUBLIC_ARC_EXPLORER`, `NEXT_PUBLIC_MIMIR_V3_ADDRESS`, `NEXT_PUBLIC_MIMIR_POOL_ADDRESS`, `NEXT_PUBLIC_MIMIR_FEES_ADDRESS`, `NEXT_PUBLIC_MIMIR_ARC_FROM_BLOCK`, `NEXT_PUBLIC_MIMIR_MIN_STAKE` |
-| Wallets | `NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID` (phone wallets in ConnectKit; optional) |
-| Backend | `NEXT_PUBLIC_CONVEX_URL`; on the backend itself: `MIMIR_V3_ADDRESS`, `MIMIR_POOL_ADDRESS`, `ORACLE_KEY` (one oracle key for every chain; `ARC_ORACLE_KEY` is a deprecated alias), `CIRCLE_API_KEY`, `CIRCLE_ENTITY_SECRET`, `CIRCLE_WALLET_SET_ID`, `ARC_COUNCIL_WALLETS`, `ARC_CREATOR_WALLET`, the model keys |
-| Models | `ORACLE_GEMINI_API_KEY` (the oracle's own, a list allowed), `COUNCIL_GEMINI_API_KEY`, `GEMINI_API_KEY(S)`, `ANTHROPIC_API_KEY` / `ORACLE_ANTHROPIC_API_KEY` |
-| Jev (optional) | `TYPESAFE_API_KEY`, `JEV_MODEL`: triage and moderation before the full model; off when empty ([CHAINS.md](docs/CHAINS.md#jev-optional)) |
-| Council | `COUNCIL_BETS` (`0` on mainnet), `COUNCIL_TAKES_PER_CREATOR_DAY`, see [docs/COUNCIL.md](docs/COUNCIL.md) |
-| App records | `NEXT_PUBLIC_CONVEX_URL` + `MIMIR_INTERNAL_SECRET` (the same on the site and the backend): agents, baskets, copy permissions, account links and Telegram chats live in the backend (`convex/appStore.ts`) |
-| Launch | `LAUNCH_ARC`, `LAUNCH_BYOK_SECRET`, `PINATA_JWT` (token images), `BASE_RPC_URL` (Clanker launches and claims) |
-| Telegram | `TELEGRAM_BOT_TOKEN`, `TELEGRAM_WEBHOOK_SECRET`, `MIMIR_INTERNAL_SECRET`, `TELEGRAM_ADMIN_IDS` |
-| Analytics | `NEXT_PUBLIC_POSTHOG_KEY`, `NEXT_PUBLIC_POSTHOG_REGION` |
-
-### Contracts
-
-| Contract | Base Sepolia (primary) | Base mainnet | Arc testnet |
-|---|---|---|---|
-| MimirV3 (VS) | `0xB29BCcA174B78bE6448234c94Bf1caab44824948` | not deployed yet | `0x5c55500acefebb1559009a2735d00f25fe3e808a` |
-| MimirPool | `0x9d3721dc087103228a4bA9EC72dacEb1B19b4402` | not deployed yet | `0x4a846757db42d258ea30b29a53dac025207846fd` |
-| MimirFees | `0xd3356F1a085068b2DA2dfE1A09f1e8ddf0eC0858` | not deployed yet | `0x3ce9b9731e5b9432ceeb04bb0e27c220293a976d` |
-| USDC | `0x036CbD53842c5426634e7929541eC2318f3dCF7e` (6 dp) | `0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913` (6 dp) | native (18 dp) |
-
-Base: `MimirV3Erc20` and `MimirPoolErc20`, deployed with `scripts/base/deploy-markets.mts` (it prints the env lines);
-chain id 84532 (Sepolia) / 8453, gas in ETH. Arc testnet: chain id 5042002, RPC `https://rpc.testnet.arc.network`,
-explorer [testnet.arcscan.app](https://testnet.arcscan.app), from block 65993456, minimum stake 0.1 USDC, dispute
-window 1 hour; redeploy with `scripts/arc/deploy.mjs`.
-
-The deployed Base Sepolia market addresses above predate the
-[November 2 contract security fixes](docs/releases/base-contract-security-2026-11-02.md). Fresh VS and pool
-deployments are required to activate wallet-bound private entry and paused-proposal refunds. No external
-contract audit is claimed; one remains required before mainnet.
 
 ## Docs
 
 - [docs/how-mimir-works.md](docs/how-mimir-works.md): the plain-language overview
-- [docs/AGENTS.md](docs/AGENTS.md): bring your own agent; [docs/openapi-agent-v1.yaml](docs/openapi-agent-v1.yaml)
-- [docs/CHAINS.md](docs/CHAINS.md): architecture on Base and Arc, contracts, fees, the backend, security reviews
+- [docs/GNO.md](docs/GNO.md): the realms, units, deployment and keys
+- [docs/AGENTS.md](docs/AGENTS.md) and [docs/openapi-agent-v1.yaml](docs/openapi-agent-v1.yaml): bring your own agent
 - [docs/COUNCIL.md](docs/COUNCIL.md): the AI personas
 - [docs/DESIGN.md](docs/DESIGN.md) and [brand/README.md](brand/README.md): design system and brand
-- [docs/archive/](docs/archive/): earlier docs, including the previous README
+
+## Origin
+
+Mimir first ran on Base and Arc as Solidity contracts ([mimir-markets](https://github.com/enliven17/mimir-markets)).
+This repository keeps that history and ports every contract rule to Gno one to one. The differences come from the
+platform (mUSD instead of USDC, one transaction with an approve instead of permits, payouts that cannot be refused,
+ed25519 fee tickets) and are documented at the top of each realm.
 
 ## Licence
 
