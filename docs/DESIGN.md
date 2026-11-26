@@ -164,9 +164,10 @@ into every prefetched route chunk.
   The body clips horizontal overflow with `overflow-x: clip`, not `hidden`,
   so it never becomes a scroll container and `position: sticky` works.
 - Wallet (`components/wallet/`): `WalletSheetProvider` (`useWalletSheet()`
-  opens the sheet), `ConnectSheet` (detected Wallet Standard wallets, install
-  links, phone deep links, per-row connecting / error states), `WalletChip`
-  (address, balances, copy, explorer, disconnect) and
+  opens the sheet), `ConnectSheet` (one row: Adena, or a link to adena.app
+  when it is not installed; connecting / error states), `WalletChip`
+  (address, mUSD and GNOT balances, the mUSD faucet, copy, gnoweb link,
+  disconnect) and
   `ConnectWalletButton` for page gates. Shell code reads the wallet through
   `hooks/useMimirWallet.ts` so a kit switch touches one file.
 
@@ -216,7 +217,7 @@ timelines.
 
 ## Arena (`app/[locale]/arena/`, `components/arena/`, `components/create/`)
 
-- **Feed** (`/arena`): `Arena` plus one live line (open claims, USDC in
+- **Feed** (`/arena`): `Arena` plus one live line (open claims, mUSD in
   play), a one-line setup banner (`OnboardingBanner`, the full checklist in a
   sheet), one control row (`feed/ArenaControls.tsx`: Open / Live / Settled
   tabs with counts, search, a Filters popover with category, minimum stake
@@ -240,10 +241,8 @@ timelines.
   `textContent`, no React renders); page clocks are coarse (15 to 30s);
   lists, panels and big sheets use the fills in `components/arena/surface.ts`
   (the same near-opaque values as the glass primitives).
-- **Script on demand**: ConnectKit and wagmi load only once something needs
-  the wallet (a stored connection or a connect click: `EvmConnectHost`);
-  the connect sheet mounts on first open and its chunk is prefetched on hover
-  or focus of a connect button.
+- **Script on demand**: the connect sheet is code-split, mounts on first open,
+  and its chunk is prefetched on hover or focus of a connect button.
 
 ## Other pages
 
