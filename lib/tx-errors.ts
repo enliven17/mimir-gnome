@@ -1,5 +1,5 @@
 /**
- * One readable line for a failed wallet transaction (EVM: viem, wagmi, an injected wallet).
+ * One readable line for a failed wallet transaction (Adena, or a gno.land RPC error).
  *
  * A user rejecting the prompt is not a failure worth a stack trace; a revert carries its reason in `shortMessage` or
  * a "reverted with reason" line. None of the raw error belongs in a toast verbatim.
