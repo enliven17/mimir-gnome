@@ -1,5 +1,5 @@
 /**
- * The market chain: Mimir runs its markets on gno.land only (docs/CHAINS.md). One entry, id "gno", built from
+ * The market chain: Mimir runs its markets on gno.land only (docs/GNO.md). One entry, id "gno", built from
  * lib/gno/config.ts:
  *
  *   id       "gno": the key stored with every indexed row (convex/schema.ts) and used in URLs

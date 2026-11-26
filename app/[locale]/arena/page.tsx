@@ -2,7 +2,7 @@
 
 /**
  * /arena: the market feed on gno.land (components/arc/arena/ArcArena.tsx), live from the Convex index. Without the market
- * realms and Convex configured (docs/CHAINS.md) there is nothing to show.
+ * realms and Convex configured (docs/GNO.md) there is nothing to show.
  */
 import { useTranslations } from "next-intl";
 
