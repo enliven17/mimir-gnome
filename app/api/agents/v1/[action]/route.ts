@@ -549,7 +549,7 @@ async function handleAuthenticated(env: AgentEnvelope, authorization: string | n
           ok: true,
           payoutWallet: agent.payoutWallet,
           // The contracts pay a referrer's share straight to it at payout: nothing accrues here to claim.
-          note: "Referrer and copy fees are paid by the realms directly to the account named in the stake.",
+          note: "Referrer and copy fees accrue in the realms; the referrer collects them with ClaimFees.",
         },
       };
     }

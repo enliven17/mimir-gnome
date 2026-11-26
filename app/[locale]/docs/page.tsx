@@ -372,7 +372,7 @@ curl -X POST https://mimirmarkets.xyz/api/launch/<agent>/call \\
             />
             <p className="m-0 text-[14px] text-muted">
               Source and tests:{" "}
-              <a className={LINK} href="https://github.com/enliven17/mimir-markets/tree/main/gno" target="_blank" rel="noreferrer">
+              <a className={LINK} href="https://github.com/enliven17/mimir-gnome/tree/main/gno" target="_blank" rel="noreferrer">
                 gno/
               </a>
               ; the deployed source of every realm is readable on gnoweb. Ownership and oracle changes are timelocked; a dispute is ruled by the arbiter.

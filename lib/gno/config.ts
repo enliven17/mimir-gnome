@@ -8,7 +8,7 @@
  *   NEXT_PUBLIC_GNOWEB_URL     default https://onyx.testnets.gno.land
  *
  * Amounts: mUSD has 6 decimals on chain. Everything off chain (Convex rows, quotes, the UI) keeps Mimir's one
- * chain-independent unit, USDC with 18 decimals ("index units"), so reads scale up by 1e12 and transaction builders
+ * chain-independent unit, an 18-decimal dollar unit ("index units"), so reads scale up by 1e12 and transaction builders
  * scale back down (lib/chains/amounts.ts).
  */
 const env = (k: string): string | undefined => {
