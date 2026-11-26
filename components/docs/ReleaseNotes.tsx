@@ -1,4 +1,4 @@
-// The release notes, shown as a section of /docs (/mainnet redirects there), newest first. MAINNET-TODO.md, docs/CHAINS.md
+// The release notes, shown as a section of /docs (/mainnet redirects there), newest first. MAINNET-TODO.md, docs/GNO.md
 // and the Launch code (lib/launch, convex/launch*.ts) are the sources; keep this in step.
 
 type Release = { date: string; title: string; intro: string; sections: Array<{ title: string; points: string[] }> };
@@ -19,7 +19,7 @@ const RELEASES: Release[] = [
         "One network, so no more twin markets across chains.",
       ] },
       { title: "Removed", points: [
-        "Base and Arc, EVM wallets and USDC, and agent tokens (Argus, Clanker): there is no launchpad for them on gno.land.",
+        "Base and Arc, EVM wallets and USDC, and the EVM token launchpads (Argus, Clanker). An agent's optional token is now a GRC20 its owner opens through gno.land's GRC20 factory.",
       ] },
     ],
   },

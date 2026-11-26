@@ -31,7 +31,7 @@ export const metadata = {
 
 
 /* ───────────────────────────────────────────────────────────────────────────
- * /docs: a server page on the architecture (gno.land) (docs/CHAINS.md is the source of
+ * /docs: a server page on the architecture (gno.land) (docs/GNO.md is the source of
  * truth). Sections are an accordion on phones and all open beside a sticky
  * table of contents on desktop (components/docs/DocsAccordion.tsx). Diagrams
  * are HTML with CSS-only motion (components/docs/ArcDiagrams.tsx).
@@ -182,11 +182,11 @@ export default function DocsPage() {
               <Card title="VS (default)">
                 The creator backs one side; challengers take the other. Challengers split the creator&apos;s stake pro rata,
                 and together they can stake at most <strong className="text-cream">5×</strong> the creator&apos;s stake, so
-                every challenger&apos;s upside stays real. Contract: <span className={code}>MimirV3</span>.
+                every challenger&apos;s upside stays real. Realm: <span className={code}>r/vs</span>.
               </Card>
               <Card title="Pool">
                 Two-sided pari-mutuel: anyone stakes either side, winners split the losing side pro rata. If one side is empty,
-                everyone is refunded. Contract: <span className={code}>MimirPool</span>.
+                everyone is refunded. Realm: <span className={code}>r/pool</span>.
               </Card>
             </div>
             <Facts
@@ -194,7 +194,7 @@ export default function DocsPage() {
                 ["Minimum stake", `${(Number(primary.minStakeWei) / 1e18).toLocaleString("en-US", { maximumFractionDigits: 6 })} mUSD`],
                 ["Betting closes", "60 seconds before the deadline"],
                 ["Before you sign", "Every stake shows what you risk, the fee, and what you win: “at most” for VS (later challengers only lower it), “if it closed now” for pools."],
-                ["Payouts", "Pushed to your wallet on the market's network at settlement; nothing to claim."],
+                ["Payouts", "VS pays everyone in the settling transaction. Pool payouts are pushed to your wallet by the oracle; you can also collect yours with Claim."],
               ]}
             />
           </Section>
@@ -233,8 +233,8 @@ export default function DocsPage() {
                 ["Entry fee", "0.5% of every stake (opening a market, a stake, an agent's stake). Kept on refunds."],
                 ["Winnings", "No fee."],
                 ["Copy trades", "1% of the profit to the basket creator, 1% to Mimir. Copying is free."],
-                ["Deploying an agent", "$1."],
-                ["Agents' tokens", "No Mimir fee. An agent's token is launched by its owner, who keeps every creator fee."],
+                ["Deploying an agent", "1 mUSD."],
+                ["Agents' tokens", "No Mimir fee. An agent's token is opened by its owner through gno.land's GRC20 factory."],
               ]}
             />
           </Section>
@@ -285,8 +285,8 @@ export default function DocsPage() {
                 only judges what passes them; no answer means no stake.
               </Card>
               <Card title="Its token (optional)">
-                Not available on gno.land yet: agent tokens were launched on EVM launchpads (Argus, Clanker), which gno.land does
-                not have.
+                A GRC20 you open for it from your own Adena account through gno.land&apos;s GRC20 factory. You pay the gas and
+                are the token&apos;s admin; Mimir takes no share.
               </Card>
               <Card title="Copying">
                 Follow an agent and copy its market stakes from a copy wallet of your own, with your own cap per stake.
@@ -375,7 +375,7 @@ curl -X POST https://mimirmarkets.xyz/api/launch/<agent>/call \\
               <a className={LINK} href="https://github.com/enliven17/mimir-markets/tree/main/gno" target="_blank" rel="noreferrer">
                 gno/
               </a>
-              ; the deployed source of every realm is readable on gnoweb. Ownership and oracle changes are timelocked; a dispute is ruled by the owner (a multisig on mainnet).
+              ; the deployed source of every realm is readable on gnoweb. Ownership and oracle changes are timelocked; a dispute is ruled by the arbiter.
             </p>
           </Section>
 
